@@ -25,8 +25,10 @@ fastify.get('/', async (request, reply) => {
     console.log('extracting', uri)
     var html = await axios.get(uri)
     data = extractor(html.data)
+    reply.send(JSON.stringify(data, null, 2))
+    return
 
-    return data
+    // return data
   } else {
     var index = fs.readFileSync('./index.html')
     reply.type('text/html').code(200)
