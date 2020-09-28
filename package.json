@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/spux/json.rocks#readme",
   "dependencies": {
+    "axios": "^0.20.0",
     "fastify": "^3.4.1",
     "unfluff": "^3.2.0"
   }
