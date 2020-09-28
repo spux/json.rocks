@@ -1,0 +1,25 @@
+{
+  "name": "jsonrocks",
+  "version": "0.0.1",
+  "description": "turn any page into json",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spux/json.rocks.git"
+  },
+  "keywords": [
+    "json"
+  ],
+  "author": "Melvin Carvalho",
+  "bugs": {
+    "url": "https://github.com/spux/json.rocks/issues"
+  },
+  "homepage": "https://github.com/spux/json.rocks#readme",
+  "dependencies": {
+    "fastify": "^3.4.1",
+    "unfluff": "^3.2.0"
+  }
+}
