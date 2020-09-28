@@ -54,7 +54,7 @@ fastify.get('/', async (request, reply) => {
 
     // response
     reply.type('text/html').code(200)
-    var armor = `<script type="application/ld+json" id="data" view="http://json.rocks/js/jr.js">
+    var armor = `<script type="application/ld+json" id="data" view="https://cdn.skypack.dev/spux-rocks/jr.js">
     ${JSON.stringify(data, null, 2)}
   </script>
   <script type="module" src="https://unpkg.com/spux-shim/web_modules/spux-shim.js"></script>`
