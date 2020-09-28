@@ -53,8 +53,15 @@ fastify.get('/', async (request, reply) => {
     }
 
     // response
-    reply.type('application/json').code(200)
-    reply.send(JSON.stringify(data, null, 2))
+    reply.type('text/html').code(200)
+    var armor = `<script type="application/ld+json" id="data" view="https://cdn.skypack.dev/spux-rocks/jr.js">
+    ${JSON.stringify(data, null, 2)}
+  </script>
+  <script type="module" src="https://unpkg.com/spux-shim/web_modules/spux-shim.js"></script>`
+
+    console.log('armor', armor)
+
+    reply.send(armor)
 
     // cache
     var root = './data'
