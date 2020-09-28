@@ -40,7 +40,7 @@ fastify.get('/', async (request, reply) => {
     // extract
     data = extractor(html.data)
     for (var i = 0; i < data.links.length; i++) {
-      data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
+      data.links[i].link = 'http://json.rocks/?uri=' + data.links[i].href
     }
 
     // response
