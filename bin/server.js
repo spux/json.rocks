@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-var port = process.env['PORT'] || 3000
+var port = process.env['PORT'] || 80
 
 const extractor = require('unfluff')
 const axios = require('axios')
@@ -9,7 +9,7 @@ const fs = require('fs')
 var uri = ''
 
 const fastify = require('fastify')({
-  logger: false
+  logger: true
 })
 
 fastify.get('/', async (request, reply) => {
@@ -34,7 +34,7 @@ fastify.get('/', async (request, reply) => {
   }
 })
 
-fastify.listen(port, (err, address) => {
+fastify.listen(port, '0.0.0.0', (err, address) => {
   if (err) throw err
   fastify.log.info(`server listening on ${address}`)
 })
