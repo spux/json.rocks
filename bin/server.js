@@ -56,10 +56,10 @@ fastify.get('/', async (request, reply) => {
     reply.type('text/html').code(200)
     var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-    <script type="application/ld+json" id="data" view="https://cdn.skypack.dev/spux-rocks/jr.js">
+    <script type="application/ld+json" id="data">
     ${JSON.stringify(data, null, 2)}
   </script>
-  <script type="module" src="https://unpkg.com/spux-shim/web_modules/spux-shim.js"></script>`
+  <script type="module" src="https://spux.org/rocks/jr.js"></script>`
 
     console.log('armor', armor)
 
