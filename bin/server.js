@@ -23,6 +23,33 @@ fastify.get('/', async (request, reply) => {
 
   // process uri
   if (uri) {
+    if (uri.match(/^[a-zA-Z ]*$/)) {
+      console.log('text search')
+
+      console.log(
+        'extracting',
+        `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`
+      )
+      var html = await axios.get(
+        `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`
+      )
+      var data = html.data
+
+      reply.type('text/html').code(200)
+      var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
+      <script type="application/ld+json" id="data">
+      ${JSON.stringify(data, null, 2)}
+    </script>
+    <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+
+      console.log('armor', armor)
+
+      reply.send(armor)
+
+      return
+    }
+
     if (!uri.match(/^http/)) {
       uri = 'https://' + uri
     }
