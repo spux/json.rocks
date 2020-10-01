@@ -125,10 +125,10 @@ fastify.get('/', async (request, reply) => {
 
     for (var i = 0; i < data.links.length; i++) {
       if (data.links[i].href.match(/^http/)) {
-        data.links[i].link = 'http://json.rocks/?uri=' + data.links[i].href
+        data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
       } else if (data.links[i].href.match(/^\//)) {
         data.links[i].link =
-          'http://json.rocks/?uri=' +
+          'https://json.rocks/?uri=' +
           parsed.protocol +
           '//' +
           origin +
