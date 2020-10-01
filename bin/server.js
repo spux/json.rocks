@@ -26,6 +26,7 @@ const metascraper = require('metascraper')([
 var argv = require('minimist')(process.argv.slice(2))
 var https = require('https')
 var http = require('http')
+var path = require('path')
 
 // MODEL
 globalThis.data = {
