@@ -31,6 +31,11 @@ var port = process.env['PORT'] || 80
 
 globalThis.defaults = {}
 
+user_agent_desktop =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36'
+
+headers = { 'User-Agent': user_agent_desktop }
+
 // FUNCTIONS
 
 // MAIN
@@ -47,7 +52,8 @@ fastify.get('/', async (request, reply) => {
         `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`
       )
       var html = await axios.get(
-        `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`
+        `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`,
+        { headers: headers }
       )
       var data = html.data
 
@@ -79,7 +85,7 @@ fastify.get('/', async (request, reply) => {
 
     // fetch
     console.log('extracting', uri)
-    var html = await axios.get(uri)
+    var html = await axios.get(uri, { headers: headers })
 
     // // extract
     data = extractor(html.data)
