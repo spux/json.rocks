@@ -5,9 +5,7 @@ const extractor = require('unfluff')
 const axios = require('axios')
 const fs = require('fs-extra')
 const url = require('url')
-const fastify = require('fastify')({
-  logger: true
-})
+
 // const scrapex = require('scrapex')
 // const cheerio = require('cheerio')
 const metascraper = require('metascraper')([
@@ -25,11 +23,38 @@ const metascraper = require('metascraper')([
   require('metascraper-amazon')(),
   require('metascraper-url')()
 ])
+var argv = require('minimist')(process.argv.slice(2))
+var https = require('https')
+var http = require('http')
+
+// MODEL
+globalThis.data = {
+  port: 80,
+  key: './privkey.pem',
+  cert: './fullchain.pem',
+  scheme: 'http'
+}
 
 // INIT
-var port = process.env['PORT'] || 80
+data.port = argv.port || data.port
+data.key = argv.key || data.key
+data.cert = argv.cert || data.cert
+data.scheme = argv.scheme || data.scheme
 
-globalThis.defaults = {}
+console.log('data', data)
+
+if (data.scheme === 'http') {
+  var fastify = require('fastify')({
+    logger: true
+  })
+} else {
+  var fastify = require('fastify')({
+    https: {
+      key: fs.readFileSync(path.join(__dirname, data.key)),
+      cert: fs.readFileSync(path.join(__dirname, data.cert))
+    }
+  })
+}
 
 user_agent_desktop =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36'
@@ -138,8 +163,8 @@ fastify.get('/', async (request, reply) => {
   }
 })
 
-// RUN SERVER
-fastify.listen(port, '0.0.0.0', (err, address) => {
+// RUN SERVER HTTP
+fastify.listen(data.port, '0.0.0.0', (err, address) => {
   if (err) throw err
   fastify.log.info(`server listening on ${address}`)
 })
