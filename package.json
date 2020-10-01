@@ -24,6 +24,7 @@
     "fastify": "^3.4.1",
     "fs-extra": "^9.0.1",
     "metascraper": "^5.14.14",
+    "metascraper-amazon": "^5.14.14",
     "metascraper-spotify": "^5.14.14",
     "metascraper-video": "^5.14.14",
     "metascraper-youtube": "^5.14.14",

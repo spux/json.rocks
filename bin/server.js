@@ -22,6 +22,7 @@ const metascraper = require('metascraper')([
   require('metascraper-spotify')(),
   require('metascraper-video')(),
   require('metascraper-youtube')(),
+  require('metascraper-amazon')(),
   require('metascraper-url')()
 ])
 
