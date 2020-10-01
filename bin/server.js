@@ -5,10 +5,25 @@ const extractor = require('unfluff')
 const axios = require('axios')
 const fs = require('fs-extra')
 const url = require('url')
-const mkdirp = require('mkdirp')
 const fastify = require('fastify')({
   logger: true
 })
+// const scrapex = require('scrapex')
+// const cheerio = require('cheerio')
+const metascraper = require('metascraper')([
+  require('metascraper-author')(),
+  require('metascraper-date')(),
+  require('metascraper-description')(),
+  require('metascraper-image')(),
+  require('metascraper-logo')(),
+  require('metascraper-clearbit')(),
+  require('metascraper-publisher')(),
+  require('metascraper-title')(),
+  require('metascraper-spotify')(),
+  require('metascraper-video')(),
+  require('metascraper-youtube')(),
+  require('metascraper-url')()
+])
 
 // INIT
 var port = process.env['PORT'] || 80
@@ -65,8 +80,16 @@ fastify.get('/', async (request, reply) => {
     console.log('extracting', uri)
     var html = await axios.get(uri)
 
-    // extract
+    // // extract
     data = extractor(html.data)
+    // var data = await scrapex(uri)
+    // console.log('DATA', data)
+    // $ = cheerio.load(html.data)
+    // console.log('CHEER', JSON.stringify($('a').attr('href'), null, 2))
+    const metadata = await metascraper({ html: html.data, url: uri })
+    console.log('###############', metadata)
+    data = { ...data, ...metadata }
+
     for (var i = 0; i < data.links.length; i++) {
       if (data.links[i].href.match(/^http/)) {
         data.links[i].link = 'http://json.rocks/?uri=' + data.links[i].href
@@ -90,7 +113,7 @@ fastify.get('/', async (request, reply) => {
   </script>
   <script type="module" src="https://spux.org/rocks/jr.js"></script>`
 
-    console.log('armor', armor)
+    // console.log('armor', armor)
 
     reply.send(armor)
 

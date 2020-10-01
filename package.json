@@ -20,9 +20,15 @@
   "homepage": "https://github.com/spux/json.rocks#readme",
   "dependencies": {
     "axios": "^0.20.0",
+    "cheerio": "^1.0.0-rc.3",
     "fastify": "^3.4.1",
     "fs-extra": "^9.0.1",
+    "metascraper": "^5.14.14",
+    "metascraper-spotify": "^5.14.14",
+    "metascraper-video": "^5.14.14",
+    "metascraper-youtube": "^5.14.14",
     "mkdirp": "^1.0.4",
+    "scrapex": "^0.3.4",
     "unfluff": "^3.2.0"
   }
 }
