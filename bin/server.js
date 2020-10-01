@@ -122,6 +122,7 @@ fastify.get('/', async (request, reply) => {
     const metadata = await metascraper({ html: html.data, url: uri })
     console.log('###############', metadata)
     data = { ...data, ...metadata }
+    data['@context'] = 'https://schema.org'
 
     for (var i = 0; i < data.links.length; i++) {
       if (data.links[i].href.match(/^http/)) {
