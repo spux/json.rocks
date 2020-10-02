@@ -81,6 +81,8 @@
 
       .logo {
         margin-bottom: 20px;
+        font-weight: bold;
+        color: blue;
       }
 
       #search {
@@ -104,7 +106,7 @@
         margin-top: 30px;
       }
 
-      .google-search,
+      .json-search,
       .lucky-btn {
         background-image: -webkit-linear-gradient(top, #f5f5f5, #f1f1f1);
         background-color: #f2f2f2;
@@ -123,7 +125,7 @@
         user-select: none;
       }
 
-      .google-search:hover,
+      .json-search:hover,
       .lucky-btn:hover {
         cursor: pointer;
         box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
@@ -133,7 +135,7 @@
         color: #222;
       }
 
-      .mic-google {
+      .mic-json {
         position: absolute;
         float: right;
         margin-top: 12px;
@@ -260,7 +262,7 @@
       }
     </style>
 
-    <title>Search Clone</title>
+    <title>JSON Rocks</title>
   </head>
   <body>
     <!--Search Navbar-->
@@ -276,22 +278,23 @@
     </nav>
     <!--Search Main-->
     <main class="main-content">
-      <div class="logo" alt="Search Logo">
+      <h2 class="logo" alt="Search Logo">
         JSON Rocks!
-      </div>
-      <a href="#"
-        ><img
-          class="mic-google"
-          src="https://web.archive.org/web/20191130234609im_/https://www.gstatic.com/images/branding/googlemic/2x/googlemic_color_24dp.png"
-          alt=""
-      /></a>
+      </h2>
       <a href="#"
         ><img
           class="keyboard"
           src="https://www.gstatic.com/inputtools/images/tia.png"
           alt=""
       /></a>
-      <form>
+      <a href="#" -
+        ><img
+          class="mic-json"
+          src="https://web.archive.org/web/20191130234609im_/https://www.gstatic.com/images/branding/googlemic/2x/googlemic_color_24dp.png"
+          alt=""
+      /></a>
+
+      <form name="q" action="/">
         <div class="search-bar">
           <i class="fas fa-search"></i>
 
@@ -304,9 +307,14 @@
           />
         </div>
       </form>
+
       <div class="btn-container">
-        <button class="google-search">Search</button>
-        <button class="lucky-btn">I´m Feeling Lucky</button>
+        <button onClick="javascript:document.q.submit()" class="json-search">
+          Search
+        </button>
+        <button onClick="javascript:document.q.submit()" class="lucky-btn">
+          I´m Feeling Lucky
+        </button>
       </div>
     </main>
   </body>
