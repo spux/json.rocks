@@ -1,2 +1,3 @@
 # json.rocks
-turn any website into json
+
+Search the web of JSON
