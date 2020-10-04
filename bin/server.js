@@ -86,15 +86,26 @@ fastify.get('/', async (request, reply) => {
     if (uri.match(/^[a-zA-Z ]*$/)) {
       console.log('text search')
 
-      console.log(
-        'extracting',
-        searx + `/?q=${uri}&categories=general&language=en-US&format=json`
-      )
-      var html = await axios.get(
-        searx + `/?q=${uri}&categories=general&language=en-US&format=json`,
-        { headers: headers }
-      )
-      var data = html.data
+      var mapped = mapURI({ pathname: uri }, root, 'q/')
+      try {
+        if (fs.existsSync(mapped)) {
+          data = JSON.parse(fs.readFileSync(mapped))
+        } else {
+          console.log(
+            'extracting',
+            searx + `/?q=${uri}&categories=general&language=en-US&format=json`
+          )
+          var html = await axios.get(
+            searx + `/?q=${uri}&categories=general&language=en-US&format=json`,
+            { headers: headers }
+          )
+          var data = html.data
+        }
+        console.log('mapped', mapped)
+        fs.outputFile(mapped, JSON.stringify(data, null, 2))
+      } catch (err) {
+        console.error(err)
+      }
 
       reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
@@ -130,7 +141,7 @@ fastify.get('/', async (request, reply) => {
       <script type="module" src="https://spux.org/rocks/jr.js"></script>`
       }
 
-      console.log('armor', armor)
+      // console.log('armor', armor)
 
       reply.send(armor)
 
