@@ -88,7 +88,11 @@ fastify.get('/', async (request, reply) => {
       reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
       if (fullhtml) {
-        var armor = `<html><head>
+        var armor = `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+
         <title>${data.title}</title>
         <meta property="og:title" content="${data.title}" />
         <meta property="og:type" content="website" />
@@ -163,7 +167,11 @@ fastify.get('/', async (request, reply) => {
     reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
     if (fullhtml) {
-      var armor = `<html><head>
+      var armor = `<!DOCTYPE html>
+      <html lang="en">
+      <head>
+      <meta charset="utf-8">
+
       <title>${data.title}</title>
       <meta property="og:title" content="${data.title}" />
       <meta property="og:type" content="website" />
