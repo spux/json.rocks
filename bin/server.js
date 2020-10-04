@@ -87,7 +87,7 @@ fastify.get('/', async (request, reply) => {
 
       reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
-      if (fullhtml) {
+      if (!data.fullhtml) {
         var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
         <script type="application/ld+json" id="data">
