@@ -43,6 +43,7 @@ data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
 var fullhtml = argv.fullhtml || data.fullhtml
+var root = './data'
 
 console.log('data', data)
 
@@ -65,6 +66,14 @@ user_agent_desktop =
 headers = { 'User-Agent': user_agent_desktop }
 
 // FUNCTIONS
+function mapURI (parsed, root, origin) {
+  return (
+    root +
+    '/' +
+    origin +
+    (parsed.pathname === '/' ? '/index.html' : parsed.pathname)
+  )
+}
 
 // MAIN
 fastify.get('/', async (request, reply) => {
@@ -136,32 +145,47 @@ fastify.get('/', async (request, reply) => {
     console.log('uri', uri)
     console.log('parsed', parsed)
 
-    // fetch
-    console.log('extracting', uri)
-    var html = await axios.get(uri, { headers: headers })
+    var mapped = mapURI(parsed, root, origin)
 
-    // // extract
-    data = extractor(html.data)
-    // var data = await scrapex(uri)
-    // console.log('DATA', data)
-    // $ = cheerio.load(html.data)
-    // console.log('CHEER', JSON.stringify($('a').attr('href'), null, 2))
-    const metadata = await metascraper({ html: html.data, url: uri })
-    console.log('###############', metadata)
-    data = { ...data, ...metadata }
-    data['@context'] = 'https://schema.org'
+    try {
+      if (fs.existsSync(mapped)) {
+        data = JSON.parse(fs.readFileSync(mapped))
+      } else {
+        // fetch
+        console.log('extracting', uri)
+        var html = await axios.get(uri, { headers: headers })
 
-    for (var i = 0; i < data.links.length; i++) {
-      if (data.links[i].href.match(/^http/)) {
-        data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
-      } else if (data.links[i].href.match(/^\//)) {
-        data.links[i].link =
-          'https://json.rocks/?uri=' +
-          parsed.protocol +
-          '//' +
-          origin +
-          data.links[i].href
+        // // extract
+        data = extractor(html.data)
+        // var data = await scrapex(uri)
+        // console.log('DATA', data)
+        // $ = cheerio.load(html.data)
+        // console.log('CHEER', JSON.stringify($('a').attr('href'), null, 2))
+        const metadata = await metascraper({ html: html.data, url: uri })
+        console.log('###############', metadata)
+        data = { ...data, ...metadata }
+        data['@context'] = 'https://schema.org'
+
+        for (var i = 0; i < data.links.length; i++) {
+          if (data.links[i].href.match(/^http/)) {
+            data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
+          } else if (data.links[i].href.match(/^\//)) {
+            data.links[i].link =
+              'https://json.rocks/?uri=' +
+              parsed.protocol +
+              '//' +
+              origin +
+              data.links[i].href
+          }
+        }
+
+        // cache
+        var file = mapURI(parsed, root, origin)
+        console.log('file', file)
+        var file = fs.outputFile(file, JSON.stringify(data, null, 2))
       }
+    } catch (err) {
+      console.error(err)
     }
 
     // response
@@ -202,20 +226,6 @@ fastify.get('/', async (request, reply) => {
     // console.log('armor', armor)
 
     reply.send(armor)
-
-    // cache
-    function mapURI (parsed, root, origin) {
-      return (
-        root +
-        '/' +
-        origin +
-        (parsed.pathname === '/' ? '/index.html' : parsed.pathname)
-      )
-    }
-    var root = './data'
-    var file = mapURI(parsed, root, origin)
-    console.log('file', file)
-    var file = fs.outputFile(file, JSON.stringify(data, null, 2))
   } else {
     var index = fs.readFileSync('./index.html')
     reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
