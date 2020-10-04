@@ -34,7 +34,8 @@ globalThis.data = {
   key: './privkey.pem',
   cert: './fullchain.pem',
   scheme: 'http',
-  fullhtml: false
+  fullhtml: false,
+  searx: 'https://searx.monicz.pl'
 }
 
 // INIT
@@ -42,6 +43,7 @@ data.port = argv.port || data.port
 data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
+var searx = argv.searx || data.searx
 var fullhtml = argv.fullhtml || data.fullhtml
 var root = './data'
 
@@ -86,10 +88,10 @@ fastify.get('/', async (request, reply) => {
 
       console.log(
         'extracting',
-        `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`
+        searx + `/?q=${uri}&categories=general&language=en-US&format=json`
       )
       var html = await axios.get(
-        `https://searx.xyz/?q=${uri}&categories=general&language=en-US&format=json`,
+        searx + `/?q=${uri}&categories=general&language=en-US&format=json`,
         { headers: headers }
       )
       var data = html.data
