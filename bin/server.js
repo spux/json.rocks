@@ -98,6 +98,7 @@ fastify.get('/', async (request, reply) => {
         <meta property="og:type" content="website" />
         <meta property="og:url" content="${data.canonicalLink}" />
         <meta property="og:image" content="${data.image}" />
+        <meta property="og:description" content="${data.description}" />
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
@@ -177,6 +178,7 @@ fastify.get('/', async (request, reply) => {
       <meta property="og:type" content="website" />
       <meta property="og:url" content="${data.canonicalLink}" />
       <meta property="og:image" content="${data.image}" />
+      <meta property="og:description" content="${data.description}" />
       
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
