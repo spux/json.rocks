@@ -69,12 +69,10 @@ headers = { 'User-Agent': user_agent_desktop }
 
 // FUNCTIONS
 function mapURI (parsed, root, origin) {
-  return (
-    root +
-    '/' +
-    origin +
-    (parsed.pathname === '/' ? '/index.html' : parsed.pathname)
-  )
+  var mapped = root + '/' + origin + parsed.pathname
+
+  if (mapped.slice(-1) === '/') mapped = mapped + 'index.html'
+  return mapped
 }
 
 // MAIN
