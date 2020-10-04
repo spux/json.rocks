@@ -87,14 +87,7 @@ fastify.get('/', async (request, reply) => {
 
       reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
-      if (!data.fullhtml) {
-        var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-        <script type="application/ld+json" id="data">
-        ${JSON.stringify(data, null, 2)}
-      </script>
-      <script type="module" src="https://spux.org/rocks/jr.js"></script>`
-      } else {
+      if (data.fullhtml) {
         var armor = `<html><head>
         <title>${data.title}</title>
         <meta property="og:title" content="${data.title}" />
@@ -110,8 +103,15 @@ fastify.get('/', async (request, reply) => {
       <script type="module" src="https://spux.org/rocks/jr.js"></script>
       </head>
       <body></body>
-      <html>
+      </html>
       `
+      } else {
+        var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
+        <script type="application/ld+json" id="data">
+        ${JSON.stringify(data, null, 2)}
+      </script>
+      <script type="module" src="https://spux.org/rocks/jr.js"></script>`
       }
 
       console.log('armor', armor)
@@ -162,12 +162,32 @@ fastify.get('/', async (request, reply) => {
     // response
     reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
-    var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-    <script type="application/ld+json" id="data">
-    ${JSON.stringify(data, null, 2)}
-  </script>
-  <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+    if (data.fullhtml) {
+      var armor = `<html><head>
+      <title>${data.title}</title>
+      <meta property="og:title" content="${data.title}" />
+      <meta property="og:type" content="website" />
+      <meta property="og:url" content="${data.canonicalLink}" />
+      <meta property="og:image" content="${data.image}" />
+      
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
+      <script type="application/ld+json" id="data">
+      ${JSON.stringify(data, null, 2)}
+    </script>
+    <script type="module" src="https://spux.org/rocks/jr.js"></script>
+    </head>
+    <body></body>
+    <html>
+    `
+    } else {
+      var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
+      <script type="application/ld+json" id="data">
+      ${JSON.stringify(data, null, 2)}
+    </script>
+    <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+    }
 
     // console.log('armor', armor)
 
