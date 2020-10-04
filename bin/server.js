@@ -7,7 +7,7 @@ const fs = require('fs-extra')
 const url = require('url')
 
 // const scrapex = require('scrapex')
-// const cheerio = require('cheerio')
+const cheerio = require('cheerio')
 const metascraper = require('metascraper')([
   require('metascraper-author')(),
   require('metascraper-date')(),
@@ -27,6 +27,7 @@ var argv = require('minimist')(process.argv.slice(2))
 var https = require('https')
 var http = require('http')
 var path = require('path')
+const { links } = require('unfluff/lib/extractor')
 
 // MODEL
 globalThis.data = {
@@ -170,12 +171,23 @@ fastify.get('/', async (request, reply) => {
         data = extractor(html.data)
         // var data = await scrapex(uri)
         // console.log('DATA', data)
-        // $ = cheerio.load(html.data)
-        // console.log('CHEER', JSON.stringify($('a').attr('href'), null, 2))
+
+        // console.log('CHEER', JSON.stringify($('a').serializeArray(), null, 2))
         const metadata = await metascraper({ html: html.data, url: uri })
         console.log('###############', metadata)
         data = { ...data, ...metadata }
         data['@context'] = 'https://schema.org'
+
+        $ = cheerio.load(html.data)
+        var ch = $('a') //jquery get all hyperlinks
+        $(ch).each(function (i, link) {
+          var l = {
+            text: $(link).text(),
+            href: $(link).attr('href')
+          }
+          // console.log('CHEER', l)
+          data.links.push(l)
+        })
 
         for (var i = 0; i < data.links.length; i++) {
           if (data.links[i].href.match(/^http/)) {
