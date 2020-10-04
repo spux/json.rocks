@@ -206,7 +206,7 @@ fastify.get('/', async (request, reply) => {
     // cache
     var root = './data'
     var file =
-      root + '/' + origin + (parsed.pathname === '/' ? '/index.html' : '/')
+      root + '/' + origin + (parsed.pathname === '/' ? '/index.html' : pathname)
     console.log('file', file)
     fs.outputFile(file, JSON.stringify(data, null, 2))
   } else {
