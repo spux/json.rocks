@@ -33,7 +33,8 @@ globalThis.data = {
   port: 80,
   key: './privkey.pem',
   cert: './fullchain.pem',
-  scheme: 'http'
+  scheme: 'http',
+  fullhtml: false
 }
 
 // INIT
@@ -41,6 +42,7 @@ data.port = argv.port || data.port
 data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
+data.fullhtml = argv.fullhtml || data.fullhtml
 
 console.log('data', data)
 
@@ -85,12 +87,32 @@ fastify.get('/', async (request, reply) => {
 
       reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
-      var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-      <script type="application/ld+json" id="data">
-      ${JSON.stringify(data, null, 2)}
-    </script>
-    <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+      if (fullhtml) {
+        var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
+        <script type="application/ld+json" id="data">
+        ${JSON.stringify(data, null, 2)}
+      </script>
+      <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+      } else {
+        var armor = `<html><head>
+        <title>${data.title}</title>
+        <meta property="og:title" content="${data.title}" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="${data.canonicalLink}" />
+        <meta property="og:image" content="${data.image}" />
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
+        <script type="application/ld+json" id="data">
+        ${JSON.stringify(data, null, 2)}
+      </script>
+      <script type="module" src="https://spux.org/rocks/jr.js"></script>
+      </head>
+      <body></body>
+      <html>
+      `
+      }
 
       console.log('armor', armor)
 
