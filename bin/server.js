@@ -204,11 +204,18 @@ fastify.get('/', async (request, reply) => {
     reply.send(armor)
 
     // cache
+    function mapURI (parsed, root, origin) {
+      return (
+        root +
+        '/' +
+        origin +
+        (parsed.pathname === '/' ? '/index.html' : parsed.pathname)
+      )
+    }
     var root = './data'
-    var file =
-      root + '/' + origin + (parsed.pathname === '/' ? '/index.html' : pathname)
+    var file = mapURI(parsed, root, origin)
     console.log('file', file)
-    fs.outputFile(file, JSON.stringify(data, null, 2))
+    var file = fs.outputFile(file, JSON.stringify(data, null, 2))
   } else {
     var index = fs.readFileSync('./index.html')
     reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
