@@ -42,7 +42,7 @@ data.port = argv.port || data.port
 data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
-data.fullhtml = argv.fullhtml || data.fullhtml
+var fullhtml = argv.fullhtml || data.fullhtml
 
 console.log('data', data)
 
@@ -87,7 +87,7 @@ fastify.get('/', async (request, reply) => {
 
       reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
-      if (data.fullhtml) {
+      if (fullhtml) {
         var armor = `<html><head>
         <title>${data.title}</title>
         <meta property="og:title" content="${data.title}" />
@@ -162,7 +162,7 @@ fastify.get('/', async (request, reply) => {
     // response
     reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
 
-    if (data.fullhtml) {
+    if (fullhtml) {
       var armor = `<html><head>
       <title>${data.title}</title>
       <meta property="og:title" content="${data.title}" />
