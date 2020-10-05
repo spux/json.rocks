@@ -181,6 +181,17 @@ fastify.get('/', async (request, reply) => {
         data['@context'] = 'https://schema.org'
 
         $ = cheerio.load(html.data)
+
+        var ch = $('iframe') //jquery get all hyperlinks
+        $(ch).each(function (i, link) {
+          var l = {
+            text: $(link).text() || 'iframe',
+            href: $(link).attr('src')
+          }
+          // console.log('CHEER', l)
+          data.links.push(l)
+        })
+
         var ch = $('a') //jquery get all hyperlinks
         $(ch).each(function (i, link) {
           var l = {
