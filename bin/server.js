@@ -161,7 +161,7 @@ fastify.get('/', async (request, reply) => {
     var mapped = mapURI(parsed, root, origin)
 
     try {
-      if (fs.existsSync(mapped)) {
+      if (fs.existsSync(mapped) && !refresh) {
         data = JSON.parse(fs.readFileSync(mapped))
       } else {
         // fetch
