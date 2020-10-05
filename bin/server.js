@@ -176,14 +176,27 @@ fastify.get('/', async (request, reply) => {
 
         // console.log('CHEER', JSON.stringify($('a').serializeArray(), null, 2))
         const metadata = await metascraper({ html: html.data, url: uri })
-        console.log('###############', metadata)
         data = { ...data, ...metadata }
         data['@context'] = 'https://schema.org'
 
         $ = cheerio.load(html.data)
 
-        var ch = $('iframe') //jquery get all hyperlinks
+        var ch = $('video') //jquery get all videos
+
         $(ch).each(function (i, link) {
+          console.log('############### VIDEO', link)
+          var l = {
+            text: $(link).text() || 'video',
+            href: $(link).attr('src')
+          }
+          // console.log('CHEER', l)
+          data.videos.push(l)
+        })
+
+        var ch = $('iframe') //jquery get all iframes
+
+        $(ch).each(function (i, link) {
+          // console.log('###############', link)
           var l = {
             text: $(link).text() || 'iframe',
             href: $(link).attr('src')
