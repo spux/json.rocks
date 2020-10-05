@@ -189,18 +189,18 @@ fastify.get('/', async (request, reply) => {
           data.links.push(l)
         })
 
-        for (var i = 0; i < data.links.length; i++) {
-          if (data.links[i].href.match(/^http/)) {
-            data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
-          } else if (data.links[i].href.match(/^\//)) {
-            data.links[i].link =
-              'https://json.rocks/?uri=' +
-              parsed.protocol +
-              '//' +
-              origin +
-              data.links[i].href
-          }
-        }
+        // for (var i = 0; i < data.links.length; i++) {
+        //   if (data.links[i].href.match(/^http/)) {
+        //     data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
+        //   } else if (data.links[i].href.match(/^\//)) {
+        //     data.links[i].link =
+        //       'https://json.rocks/?uri=' +
+        //       parsed.protocol +
+        //       '//' +
+        //       origin +
+        //       data.links[i].href
+        //   }
+        // }
 
         // cache
         var file = mapURI(parsed, root, origin)
