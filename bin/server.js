@@ -79,6 +79,7 @@ function mapURI (parsed, root, origin) {
 // MAIN
 fastify.get('/', async (request, reply) => {
   var uri = request.query.uri
+  var refresh = request.query.refresh
 
   // process uri
   if (uri) {
@@ -87,7 +88,7 @@ fastify.get('/', async (request, reply) => {
 
       var mapped = mapURI({ pathname: uri }, root, 'q/')
       try {
-        if (fs.existsSync(mapped)) {
+        if (fs.existsSync(mapped) && !refresh) {
           data = JSON.parse(fs.readFileSync(mapped))
         } else {
           console.log(
