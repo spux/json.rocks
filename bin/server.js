@@ -157,6 +157,7 @@ fastify.get('/', async (request, reply) => {
     var origin = parsed.hostname
     console.log('uri', uri)
     console.log('parsed', parsed)
+    console.log('refresh', refresh)
 
     var mapped = mapURI(parsed, root, origin)
 
