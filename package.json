@@ -1,6 +1,6 @@
 {
   "name": "jsonrocks",
-  "version": "0.0.45",
+  "version": "0.0.46",
   "description": "turn any page into json",
   "main": "index.js",
   "scripts": {
