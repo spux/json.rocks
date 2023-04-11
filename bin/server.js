@@ -81,6 +81,7 @@ function mapURI(parsed, root, origin) {
 // MAIN
 fastify.get('/', async (request, reply) => {
   var uri = request.query.uri
+  var filter = request.query.filter
   var refresh = request.query.refresh
 
   // process uri
@@ -266,12 +267,13 @@ fastify.get('/', async (request, reply) => {
     <html>
     `
     } else {
-      if (data.filter === 'links') {
+      console.log('filter', filter)
+      if (filter === 'links') {
         data = data.links
       }
-      if (data.filter === 'imgage') {
+      if (filter === 'image') {
         data = data.links
-        data = data.filter(obj => obj.href.endsWith('.jpg') || obj.href.endsWith('.png') || obj.href.endsWith('.gif'))
+        data = data.filter(obj => obj?.href?.toLowerCase().endsWith('.jpg') || obj?.href?.toLowerCase().endsWith('.png') || obj?.href?.toLowerCase().endsWith('.gif'))
       }
       var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
