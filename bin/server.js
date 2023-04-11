@@ -36,7 +36,8 @@ globalThis.data = {
   cert: './fullchain.pem',
   scheme: 'http',
   fullhtml: false,
-  searx: 'https://searx.monicz.pl'
+  searx: 'https://searx.monicz.pl',
+  filter: null
 }
 
 // INIT
@@ -44,6 +45,7 @@ data.port = argv.port || data.port
 data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
+data.filter = argv.filter || data.filter
 var searx = argv.searx || data.searx
 var fullhtml = argv.fullhtml || data.fullhtml
 var root = './data'
@@ -69,7 +71,7 @@ user_agent_desktop =
 headers = { 'User-Agent': user_agent_desktop }
 
 // FUNCTIONS
-function mapURI (parsed, root, origin) {
+function mapURI(parsed, root, origin) {
   var mapped = root + '/' + origin + parsed.pathname
 
   if (mapped.slice(-1) === '/') mapped = mapped + 'index.html'
@@ -264,6 +266,13 @@ fastify.get('/', async (request, reply) => {
     <html>
     `
     } else {
+      if (data.filter === 'links') {
+        data = data.links
+      }
+      if (data.filter === 'imgage') {
+        data = data.links
+        data = data.filter(obj => obj.href.endsWith('.jpg') || obj.href.endsWith('.png') || obj.href.endsWith('.gif'))
+      }
       var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
       <script type="application/ld+json" id="data">
