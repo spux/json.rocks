@@ -1,42 +1,61 @@
 #!/usr/bin/env node
 
 // IMPORTS
-const extractor = require('unfluff')
-const axios = require('axios')
-const fs = require('fs-extra')
-const url = require('url')
+import extractor from 'unfluff'
+import axios from 'axios'
+import fs from 'fs-extra'
+import url from 'url'
 
 // const scrapex = require('scrapex')
-const cheerio = require('cheerio')
-const metascraper = require('metascraper')([
-  require('metascraper-author')(),
-  require('metascraper-date')(),
-  require('metascraper-description')(),
-  require('metascraper-image')(),
-  require('metascraper-logo')(),
-  require('metascraper-clearbit')(),
-  require('metascraper-publisher')(),
-  require('metascraper-title')(),
-  require('metascraper-spotify')(),
-  require('metascraper-video')(),
-  require('metascraper-youtube')(),
-  require('metascraper-amazon')(),
-  require('metascraper-url')()
+import * as cheerio from 'cheerio'
+import metascraper from 'metascraper'
+import metaAuthor from 'metascraper-author'
+import metaDate from 'metascraper-date'
+import metaDescription from 'metascraper-description'
+import metaImage from 'metascraper-image'
+import metaLogo from 'metascraper-logo'
+import metaClearbit from 'metascraper-clearbit'
+import metaPublisher from 'metascraper-publisher'
+import metaTitle from 'metascraper-title'
+import metaSpotify from 'metascraper-spotify'
+import metaVideo from 'metascraper-video'
+import metaYoutube from 'metascraper-youtube'
+import metaAmazon from 'metascraper-amazon'
+import metaUrl from 'metascraper-url'
+import minimist from 'minimist'
+import https from 'https'
+import http from 'http'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const argv = minimist(process.argv.slice(2))
+const meta = metascraper([
+  metaAuthor(),
+  metaDate(),
+  metaDescription(),
+  metaImage(),
+  metaLogo(),
+  metaClearbit(),
+  metaPublisher(),
+  metaTitle(),
+  metaSpotify(),
+  metaVideo(),
+  metaYoutube(),
+  metaAmazon(),
+  metaUrl()
 ])
-var argv = require('minimist')(process.argv.slice(2))
-var https = require('https')
-var http = require('http')
-var path = require('path')
-const { links } = require('unfluff/lib/extractor')
 
 // MODEL
 globalThis.data = {
-  port: 80,
+  port: 9980,
   key: './privkey.pem',
   cert: './fullchain.pem',
   scheme: 'http',
   fullhtml: false,
-  searx: 'https://searx.monicz.pl',
+  searx: 'https://search.inetol.net/',
   filter: null
 }
 
@@ -53,11 +72,11 @@ var root = './data'
 console.log('data', data)
 
 if (data.scheme === 'http') {
-  var fastify = require('fastify')({
+  var fastify = (await import('fastify')).default({
     logger: true
   })
 } else {
-  var fastify = require('fastify')({
+  var fastify = (await import('fastify')).default({
     https: {
       key: fs.readFileSync(path.join(__dirname, data.key)),
       cert: fs.readFileSync(path.join(__dirname, data.cert))
@@ -65,13 +84,13 @@ if (data.scheme === 'http') {
   })
 }
 
-user_agent_desktop =
+const user_agent_desktop =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36'
 
-headers = { 'User-Agent': user_agent_desktop }
+const headers = { 'User-Agent': user_agent_desktop }
 
 // FUNCTIONS
-function mapURI(parsed, root, origin) {
+function mapURI (parsed, root, origin) {
   var mapped = root + '/' + origin + parsed.pathname
 
   if (mapped.slice(-1) === '/') mapped = mapped + 'index.html'

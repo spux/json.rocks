@@ -1,8 +1,9 @@
 {
   "name": "jsonrocks",
-  "version": "0.0.61",
+  "version": "0.0.62",
   "description": "turn any page into json",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
