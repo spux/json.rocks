@@ -27,9 +27,16 @@ import https from 'https'
 import http from 'http'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { LRUCache } from 'lru-cache'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// Initialize LRU cache for URL caching (max 500 items, 1 hour TTL)
+const cache = new LRUCache({ 
+  max: 500, 
+  ttl: 1000 * 60 * 60 // 1 hour TTL
+})
 
 const argv = minimist(process.argv.slice(2))
 const meta = metascraper([
@@ -84,6 +91,16 @@ if (data.scheme === 'http') {
   })
 }
 
+// Register middleware plugins
+await fastify.register((await import('fastify-compress')).default, { global: true })
+await fastify.register((await import('fastify-rate-limit')).default, {
+  max: 100,
+  timeWindow: '1 minute'
+})
+await fastify.register((await import('fastify-cors')).default, {
+  origin: true
+})
+
 const user_agent_desktop =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36'
 
@@ -107,6 +124,15 @@ function mapURI (parsed, root, origin) {
   return mapped
 }
 
+// Health check endpoint
+fastify.get('/health', async (request, reply) => {
+  return { 
+    status: 'ok', 
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  }
+})
+
 // MAIN
 fastify.get('/', async (request, reply) => {
   var uri = request.query.uri
@@ -115,13 +141,23 @@ fastify.get('/', async (request, reply) => {
 
   // process uri
   if (uri) {
+    // Validate URI for non-text searches
+    if (!uri.match(/^[a-zA-Z ]*$/)) {
+      if (!/^https?:\/\/.+/.test(uri)) {
+        return reply.code(400).send({ 
+          error: 'Invalid URI',
+          message: 'URI must be a valid HTTP or HTTPS URL'
+        })
+      }
+    }
+    
     if (uri.match(/^[a-zA-Z ]*$/)) {
       console.log('text search')
 
       var mapped = mapURI({ pathname: uri }, root, 'q/')
       try {
         if (fs.existsSync(mapped) && !refresh) {
-          data = JSON.parse(fs.readFileSync(mapped))
+          data = JSON.parse(await fs.readFile(mapped, 'utf8'))
         } else {
           console.log(
             'extracting',
@@ -196,21 +232,48 @@ fastify.get('/', async (request, reply) => {
     var mapped = mapURI(parsed, root, origin)
 
     try {
-      if (fs.existsSync(mapped) && !refresh) {
-        data = JSON.parse(fs.readFileSync(mapped))
+      // Check memory cache first
+      if (cache.has(uri) && !refresh) {
+        console.log('Cache hit for', uri)
+        data = cache.get(uri)
+      } else if (fs.existsSync(mapped) && !refresh) {
+        // File cache fallback
+        console.log('getting', mapped)
+        data = JSON.parse(await fs.readFile(mapped, 'utf8'))
+        cache.set(uri, data) // Add to memory cache
       } else {
-        // fetch
+        // fetch with timeout and error recovery
         console.log('extracting', uri)
-        var html = await axios.get(uri, { headers: headers })
+        var html = await axios.get(uri, { 
+          headers: headers,
+          timeout: 10000, // 10 second timeout
+          maxRedirects: 5,
+          validateStatus: (status) => status < 500 // Accept any status < 500
+        })
 
-        // // extract
-        data = extractor(html.data)
+        // // extract with error handling
+        try {
+          data = extractor(html.data)
+        } catch (extractorErr) {
+          console.warn('Unfluff extractor failed, using basic extraction:', extractorErr.message)
+          data = {
+            title: '',
+            text: '',
+            url: uri,
+            image: '',
+            description: ''
+          }
+        }
         // var data = await scrapex(uri)
         // console.log('DATA', data)
 
         // console.log('CHEER', JSON.stringify($('a').serializeArray(), null, 2))
-        const metadata = await metascraper({ html: html.data, url: uri })
-        data = { ...data, ...metadata }
+        try {
+          const metadata = await metascraper({ html: html.data, url: uri })
+          data = { ...data, ...metadata }
+        } catch (metascraperErr) {
+          console.warn('Metascraper failed, continuing with basic data:', metascraperErr.message)
+        }
         data['@context'] = 'https://schema.org'
         
         // Initialize arrays if they don't exist
@@ -253,6 +316,20 @@ fastify.get('/', async (request, reply) => {
           data.links.push(l)
         })
 
+        // Extract image sources from <img> tags
+        if (!data.images) data.images = []
+        var imgTags = $('img')
+        $(imgTags).each(function (i, img) {
+          var imgData = {
+            src: $(img).attr('src'),
+            alt: $(img).attr('alt') || '',
+            title: $(img).attr('title') || ''
+          }
+          if (imgData.src) {
+            data.images.push(imgData)
+          }
+        })
+
         // for (var i = 0; i < data.links.length; i++) {
         //   if (data.links[i].href.match(/^http/)) {
         //     data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
@@ -266,13 +343,24 @@ fastify.get('/', async (request, reply) => {
         //   }
         // }
 
-        // cache
+        // Add to memory cache
+        cache.set(uri, data)
+        
+        // File cache (async, non-blocking)
         var file = mapURI(parsed, root, origin)
         console.log('file', file)
-        await fs.outputFile(file, JSON.stringify(data, null, 2))
+        fs.outputFile(file, JSON.stringify(data, null, 2)).catch(err => {
+          console.error('Failed to write cache file:', err)
+        })
       }
     } catch (err) {
-      console.error(err)
+      console.error('Error processing request:', err.message)
+      // Return error response instead of silently failing
+      return reply.code(500).send({ 
+        error: 'Failed to process URL',
+        message: err.message,
+        url: uri
+      })
     }
 
     // response
@@ -307,8 +395,20 @@ fastify.get('/', async (request, reply) => {
         data = data.links
       }
       if (filter === 'image') {
-        data = data.links
-        data = data.filter(obj => obj?.href?.toLowerCase().endsWith('.jpg') || obj?.href?.toLowerCase().endsWith('.png') || obj?.href?.toLowerCase().endsWith('.gif'))
+        // Combine image links and actual images
+        const imageLinks = data.links?.filter(obj => {
+          const href = obj?.href?.toLowerCase()
+          return href && (
+            href.endsWith('.jpg') || href.endsWith('.jpeg') || 
+            href.endsWith('.png') || href.endsWith('.gif') || 
+            href.endsWith('.webp') || href.endsWith('.svg') || 
+            href.endsWith('.bmp') || href.endsWith('.ico')
+          )
+        }) || []
+        
+        const imageElements = data.images || []
+        
+        data = [...imageLinks, ...imageElements]
       }
       var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
