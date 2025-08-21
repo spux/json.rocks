@@ -90,6 +90,16 @@ const user_agent_desktop =
 const headers = { 'User-Agent': user_agent_desktop }
 
 // FUNCTIONS
+function escapeHtml(unsafe) {
+  if (!unsafe) return ''
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
 function mapURI (parsed, root, origin) {
   var mapped = root + '/' + origin + parsed.pathname
 
@@ -124,12 +134,14 @@ fastify.get('/', async (request, reply) => {
           var data = html.data
         }
         console.log('mapped', mapped)
-        fs.outputFile(mapped, JSON.stringify(data, null, 2))
+        await fs.outputFile(mapped, JSON.stringify(data, null, 2))
       } catch (err) {
         console.error(err)
       }
 
-      reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
+      reply.code(200)
+        .header('Content-Type', 'text/html; charset=UTF-8')
+        .header('Cache-Control', 'public, max-age=3600')
 
       if (fullhtml) {
         var armor = `<!DOCTYPE html>
@@ -137,12 +149,12 @@ fastify.get('/', async (request, reply) => {
         <head>
         <meta charset="utf-8">
 
-        <title>${data.title}</title>
-        <meta property="og:title" content="${data.title}" />
+        <title>${escapeHtml(data.title)}</title>
+        <meta property="og:title" content="${escapeHtml(data.title)}" />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="${data.canonicalLink}" />
-        <meta property="og:image" content="${data.image}" />
-        <meta property="og:description" content="${data.description}" />
+        <meta property="og:url" content="${escapeHtml(data.canonicalLink)}" />
+        <meta property="og:image" content="${escapeHtml(data.image)}" />
+        <meta property="og:description" content="${escapeHtml(data.description)}" />
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
@@ -200,8 +212,12 @@ fastify.get('/', async (request, reply) => {
         const metadata = await metascraper({ html: html.data, url: uri })
         data = { ...data, ...metadata }
         data['@context'] = 'https://schema.org'
+        
+        // Initialize arrays if they don't exist
+        if (!data.videos) data.videos = []
+        if (!data.links) data.links = []
 
-        $ = cheerio.load(html.data)
+        const $ = cheerio.load(html.data)
 
         var ch = $('video') //jquery get all videos
 
@@ -253,7 +269,7 @@ fastify.get('/', async (request, reply) => {
         // cache
         var file = mapURI(parsed, root, origin)
         console.log('file', file)
-        var file = fs.outputFile(file, JSON.stringify(data, null, 2))
+        await fs.outputFile(file, JSON.stringify(data, null, 2))
       }
     } catch (err) {
       console.error(err)
@@ -268,12 +284,12 @@ fastify.get('/', async (request, reply) => {
       <head>
       <meta charset="utf-8">
 
-      <title>${data.title}</title>
-      <meta property="og:title" content="${data.title}" />
+      <title>${escapeHtml(data.title)}</title>
+      <meta property="og:title" content="${escapeHtml(data.title)}" />
       <meta property="og:type" content="website" />
-      <meta property="og:url" content="${data.canonicalLink}" />
-      <meta property="og:image" content="${data.image}" />
-      <meta property="og:description" content="${data.description}" />
+      <meta property="og:url" content="${escapeHtml(data.canonicalLink)}" />
+      <meta property="og:image" content="${escapeHtml(data.image)}" />
+      <meta property="og:description" content="${escapeHtml(data.description)}" />
       
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
@@ -283,7 +299,7 @@ fastify.get('/', async (request, reply) => {
     <script type="module" src="https://spux.org/rocks/jr.js"></script>
     </head>
     <body></body>
-    <html>
+    </html>
     `
     } else {
       console.log('filter', filter)
