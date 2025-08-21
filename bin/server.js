@@ -266,6 +266,29 @@ function mapURI (parsed, root, origin) {
   return mapped
 }
 
+// Serve static JS files
+fastify.get('/js/:filename', async (request, reply) => {
+  const filename = request.params.filename
+  const allowedFiles = ['json-renderer.js']
+  
+  if (!allowedFiles.includes(filename)) {
+    return reply.code(404).send({ error: 'File not found' })
+  }
+  
+  try {
+    const filePath = path.join(__dirname, '../js', filename)
+    const fileContent = await fs.readFile(filePath, 'utf8')
+    
+    reply
+      .code(200)
+      .header('Content-Type', 'application/javascript')
+      .header('Cache-Control', 'public, max-age=86400') // 24 hour cache
+      .send(fileContent)
+  } catch (err) {
+    reply.code(404).send({ error: 'File not found' })
+  }
+})
+
 // Health check endpoint
 fastify.get('/health', async (request, reply) => {
   return { 
@@ -378,7 +401,7 @@ fastify.get('/', async (request, reply) => {
         <script type="application/ld+json" id="data">
         ${JSON.stringify(data, null, 2)}
       </script>
-      <script type="module" src="https://spux.org/rocks/jr.js"></script>
+      <script src="/js/json-renderer.js"></script>
       </head>
       <body></body>
       </html>
@@ -389,7 +412,7 @@ fastify.get('/', async (request, reply) => {
         <script type="application/ld+json" id="data">
         ${JSON.stringify(data, null, 2)}
       </script>
-      <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+      <script src="/js/json-renderer.js"></script>`
       }
 
       // console.log('armor', armor)
@@ -592,7 +615,7 @@ fastify.get('/', async (request, reply) => {
       <script type="application/ld+json" id="data">
       ${JSON.stringify(data, null, 2)}
     </script>
-    <script type="module" src="https://spux.org/rocks/jr.js"></script>
+    <script src="/js/json-renderer.js"></script>
     </head>
     <body></body>
     </html>
@@ -623,7 +646,7 @@ fastify.get('/', async (request, reply) => {
       <script type="application/ld+json" id="data">
       ${JSON.stringify(data, null, 2)}
     </script>
-    <script type="module" src="https://spux.org/rocks/jr.js"></script>`
+    <script src="/js/json-renderer.js"></script>`
     }
 
     // console.log('armor', armor)
@@ -649,7 +672,7 @@ fastify.addHook('onSend', async (request, reply, payload) => {
   reply.header('X-Frame-Options', 'DENY')
   reply.header('X-XSS-Protection', '1; mode=block')
   reply.header('Referrer-Policy', 'strict-origin-when-cross-origin')
-  reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://spux.org; style-src 'self' 'unsafe-inline'")
+  reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'")
   return payload
 })
 
