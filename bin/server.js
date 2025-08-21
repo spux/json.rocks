@@ -28,15 +28,148 @@ import http from 'http'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { LRUCache } from 'lru-cache'
+import { isIP } from 'net'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Initialize LRU cache for URL caching (max 500 items, 1 hour TTL)
+// Initialize LRU cache for URL caching (max 100 items, 30 min TTL)
 const cache = new LRUCache({ 
-  max: 500, 
-  ttl: 1000 * 60 * 60 // 1 hour TTL
+  max: 100, 
+  ttl: 1000 * 60 * 30 // 30 min TTL
 })
+
+// Security configuration
+const MAX_CONTENT_SIZE = 5 * 1024 * 1024 // 5MB limit
+const MAX_CONCURRENT_REQUESTS = 5
+const activeRequests = new Map()
+
+// Load allowed domains from configuration file
+let ALLOWED_DOMAINS = []
+
+function loadAllowedDomains() {
+  const allowlistPath = path.join(__dirname, '../data/allowed-domains.json')
+  
+  try {
+    if (fs.existsSync(allowlistPath)) {
+      const config = JSON.parse(fs.readFileSync(allowlistPath, 'utf8'))
+      ALLOWED_DOMAINS = config.domains || []
+      console.log(`Loaded ${ALLOWED_DOMAINS.length} allowed domains from config`)
+    } else {
+      // Create default allowlist file if it doesn't exist
+      const defaultConfig = {
+        domains: [
+          'github.com',
+          'stackoverflow.com',
+          'wikipedia.org',
+          'example.com',
+          'httpbin.org',
+          'jsonplaceholder.typicode.com'
+        ],
+        comments: [
+          'Add trusted domains here for scraping.',
+          'Subdomains are automatically included (e.g., "github.com" allows "api.github.com")',
+          'This file is in .gitignore so each deployment can have custom domains'
+        ],
+        lastUpdated: new Date().toISOString()
+      }
+      
+      fs.ensureDirSync(path.dirname(allowlistPath))
+      fs.writeFileSync(allowlistPath, JSON.stringify(defaultConfig, null, 2))
+      ALLOWED_DOMAINS = defaultConfig.domains
+      console.log(`Created default allowed-domains.json with ${ALLOWED_DOMAINS.length} domains`)
+    }
+  } catch (err) {
+    console.error('Error loading allowed domains:', err.message)
+    console.log('Using fallback allowlist')
+    ALLOWED_DOMAINS = ['github.com', 'stackoverflow.com', 'wikipedia.org', 'example.com', 'httpbin.org']
+  }
+}
+
+// Load allowed domains on startup
+loadAllowedDomains()
+
+// Blocked IP ranges (RFC 1918 private networks, localhost, metadata endpoints)
+const BLOCKED_IP_RANGES = [
+  // IPv4 private ranges
+  { start: '10.0.0.0', end: '10.255.255.255' },
+  { start: '172.16.0.0', end: '172.31.255.255' },
+  { start: '192.168.0.0', end: '192.168.255.255' },
+  // Localhost
+  { start: '127.0.0.0', end: '127.255.255.255' },
+  // Link-local (AWS metadata, etc)
+  { start: '169.254.0.0', end: '169.254.255.255' },
+  // Multicast
+  { start: '224.0.0.0', end: '239.255.255.255' }
+]
+
+// Security validation functions
+function isValidUrl(urlString) {
+  try {
+    const url = new URL(urlString)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function isAllowedDomain(urlString) {
+  try {
+    const url = new URL(urlString)
+    const hostname = url.hostname.toLowerCase()
+    
+    // Check exact match or subdomain match
+    return ALLOWED_DOMAINS.some(domain => {
+      return hostname === domain || hostname.endsWith('.' + domain)
+    })
+  } catch {
+    return false
+  }
+}
+
+function ipToNumber(ip) {
+  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0
+}
+
+function isBlockedIP(urlString) {
+  try {
+    const url = new URL(urlString)
+    const hostname = url.hostname
+    
+    // Check if it's an IP address
+    if (isIP(hostname)) {
+      const ipNum = ipToNumber(hostname)
+      
+      return BLOCKED_IP_RANGES.some(range => {
+        const startNum = ipToNumber(range.start)
+        const endNum = ipToNumber(range.end)
+        return ipNum >= startNum && ipNum <= endNum
+      })
+    }
+    
+    // Check for localhost hostnames
+    const blockedHostnames = ['localhost', 'metadata.google.internal']
+    return blockedHostnames.includes(hostname.toLowerCase())
+  } catch {
+    return true // Block invalid URLs
+  }
+}
+
+function validateSecureUrl(urlString) {
+  if (!isValidUrl(urlString)) {
+    throw new Error('Invalid URL format')
+  }
+  
+  if (!isAllowedDomain(urlString)) {
+    throw new Error('Domain not in allowlist. Contact admin to add trusted domains.')
+  }
+  
+  if (isBlockedIP(urlString)) {
+    throw new Error('Access to private networks and localhost is blocked for security')
+  }
+  
+  return true
+}
 
 const argv = minimist(process.argv.slice(2))
 const meta = metascraper([
@@ -94,8 +227,17 @@ if (data.scheme === 'http') {
 // Register middleware plugins
 await fastify.register((await import('fastify-compress')).default, { global: true })
 await fastify.register((await import('fastify-rate-limit')).default, {
-  max: 100,
-  timeWindow: '1 minute'
+  max: 5,                    // Strict: 5 requests per minute
+  timeWindow: '1 minute',
+  keyGenerator: (req) => req.ip, // Ensure IP-based limiting
+  skipOnError: false,
+  errorResponseBuilder: (req, context) => {
+    return {
+      error: 'Rate limit exceeded',
+      message: `Too many requests. Limit: ${context.max} per ${context.after}`,
+      retryAfter: context.ttl
+    }
+  }
 })
 await fastify.register((await import('fastify-cors')).default, {
   origin: true
@@ -138,15 +280,54 @@ fastify.get('/', async (request, reply) => {
   var uri = request.query.uri
   var filter = request.query.filter
   var refresh = request.query.refresh
+  
+  // Check concurrent request limit
+  const clientIP = request.ip
+  const activeCount = activeRequests.get(clientIP) || 0
+  
+  if (activeCount >= MAX_CONCURRENT_REQUESTS) {
+    return reply.code(429).send({
+      error: 'Too many concurrent requests',
+      message: `Maximum ${MAX_CONCURRENT_REQUESTS} concurrent requests per IP`,
+      activeRequests: activeCount
+    })
+  }
+  
+  // Track active request
+  activeRequests.set(clientIP, activeCount + 1)
+  
+  // Cleanup function
+  const cleanup = () => {
+    const current = activeRequests.get(clientIP) || 0
+    if (current <= 1) {
+      activeRequests.delete(clientIP)
+    } else {
+      activeRequests.set(clientIP, current - 1)
+    }
+  }
+  
+  try {
 
   // process uri
   if (uri) {
     // Validate URI for non-text searches
     if (!uri.match(/^[a-zA-Z ]*$/)) {
       if (!/^https?:\/\/.+/.test(uri)) {
+        cleanup()
         return reply.code(400).send({ 
           error: 'Invalid URI',
           message: 'URI must be a valid HTTP or HTTPS URL'
+        })
+      }
+      
+      // Security validation for URLs
+      try {
+        validateSecureUrl(uri)
+      } catch (securityError) {
+        cleanup()
+        return reply.code(403).send({
+          error: 'Security validation failed',
+          message: securityError.message
         })
       }
     }
@@ -242,13 +423,22 @@ fastify.get('/', async (request, reply) => {
         data = JSON.parse(await fs.readFile(mapped, 'utf8'))
         cache.set(uri, data) // Add to memory cache
       } else {
-        // fetch with timeout and error recovery
+        // fetch with timeout and security limits
         console.log('extracting', uri)
         var html = await axios.get(uri, { 
           headers: headers,
-          timeout: 10000, // 10 second timeout
-          maxRedirects: 5,
-          validateStatus: (status) => status < 500 // Accept any status < 500
+          timeout: 5000, // 5 second timeout (reduced from 10s)
+          maxRedirects: 3, // Reduced redirects
+          maxContentLength: MAX_CONTENT_SIZE,
+          maxBodyLength: MAX_CONTENT_SIZE,
+          validateStatus: (status) => status < 500, // Accept any status < 500
+          // Additional security headers
+          'User-Agent': user_agent_desktop,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
         })
 
         // // extract with error handling
@@ -354,13 +544,31 @@ fastify.get('/', async (request, reply) => {
         })
       }
     } catch (err) {
+      cleanup()
       console.error('Error processing request:', err.message)
-      // Return error response instead of silently failing
-      return reply.code(500).send({ 
-        error: 'Failed to process URL',
-        message: err.message,
-        url: uri
-      })
+      
+      // Handle different error types
+      if (err.code === 'ENOTFOUND') {
+        return reply.code(404).send({
+          error: 'URL not found',
+          message: 'The requested URL could not be resolved'
+        })
+      } else if (err.code === 'ECONNREFUSED') {
+        return reply.code(503).send({
+          error: 'Connection refused',
+          message: 'Could not connect to the target server'
+        })
+      } else if (err.code === 'ETIMEDOUT') {
+        return reply.code(408).send({
+          error: 'Request timeout',
+          message: 'The request took too long to complete'
+        })
+      } else {
+        return reply.code(500).send({ 
+          error: 'Failed to process URL',
+          message: 'Internal server error occurred'
+        })
+      }
     }
 
     // response
@@ -427,10 +635,71 @@ fastify.get('/', async (request, reply) => {
 
     return index
   }
+  } finally {
+    // Always cleanup active requests
+    if (uri) {
+      cleanup()
+    }
+  }
+})
+
+// Add security headers middleware
+fastify.addHook('onSend', async (request, reply, payload) => {
+  reply.header('X-Content-Type-Options', 'nosniff')
+  reply.header('X-Frame-Options', 'DENY')
+  reply.header('X-XSS-Protection', '1; mode=block')
+  reply.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://spux.org; style-src 'self' 'unsafe-inline'")
+  return payload
+})
+
+// Add graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down gracefully')
+  fastify.close(() => {
+    console.log('Server closed')
+    process.exit(0)
+  })
+})
+
+// Add endpoint to reload allowed domains (for admin use)
+fastify.post('/admin/reload-domains', async (request, reply) => {
+  try {
+    loadAllowedDomains()
+    return {
+      success: true,
+      message: `Reloaded ${ALLOWED_DOMAINS.length} allowed domains`,
+      domains: ALLOWED_DOMAINS
+    }
+  } catch (err) {
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    })
+  }
+})
+
+// Add endpoint to view current allowed domains
+fastify.get('/admin/domains', async (request, reply) => {
+  return {
+    allowedDomains: ALLOWED_DOMAINS,
+    count: ALLOWED_DOMAINS.length,
+    configFile: 'data/allowed-domains.json'
+  }
 })
 
 // RUN SERVER HTTP
 fastify.listen(data.port, '0.0.0.0', (err, address) => {
   if (err) throw err
   fastify.log.info(`server listening on ${address}`)
+  console.log('Security measures active:')
+  console.log('- Rate limiting: 5 requests/minute per IP')
+  console.log('- Domain allowlist:', ALLOWED_DOMAINS.length, 'domains loaded from data/allowed-domains.json')
+  console.log('- Private IP blocking enabled')
+  console.log('- Content size limit:', MAX_CONTENT_SIZE / 1024 / 1024 + 'MB')
+  console.log('- Max concurrent requests per IP:', MAX_CONCURRENT_REQUESTS)
+  console.log('')
+  console.log('Admin endpoints:')
+  console.log('- GET /admin/domains - View allowed domains')
+  console.log('- POST /admin/reload-domains - Reload domains from file')
 })
