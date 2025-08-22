@@ -227,15 +227,25 @@ if (data.scheme === 'http') {
 // Register middleware plugins
 await fastify.register((await import('fastify-compress')).default, { global: true })
 await fastify.register((await import('fastify-rate-limit')).default, {
-  max: 5,                    // Strict: 5 requests per minute
+  max: (req, key) => {
+    // Check if the request URI is in cache
+    const uri = req.query?.uri
+    if (uri && cache.has(uri)) {
+      return 100  // 100 requests per minute for cached content
+    }
+    return 5     // 5 requests per minute for non-cached content
+  },
   timeWindow: '1 minute',
   keyGenerator: (req) => req.ip, // Ensure IP-based limiting
   skipOnError: false,
   errorResponseBuilder: (req, context) => {
+    const uri = req.query?.uri
+    const isCached = uri && cache.has(uri)
     return {
       error: 'Rate limit exceeded',
-      message: `Too many requests. Limit: ${context.max} per ${context.after}`,
-      retryAfter: context.ttl
+      message: `Too many requests. Limit: ${context.max} per ${context.after}${isCached ? ' (cached)' : ' (non-cached)'}`,
+      retryAfter: context.ttl,
+      type: isCached ? 'cached' : 'non-cached'
     }
   }
 })
@@ -716,7 +726,7 @@ fastify.listen(data.port, '0.0.0.0', (err, address) => {
   if (err) throw err
   fastify.log.info(`server listening on ${address}`)
   console.log('Security measures active:')
-  console.log('- Rate limiting: 5 requests/minute per IP')
+  console.log('- Rate limiting: 5 requests/minute per IP (non-cached), 100 requests/minute (cached)')
   console.log('- Domain allowlist:', ALLOWED_DOMAINS.length, 'domains loaded from data/allowed-domains.json')
   console.log('- Private IP blocking enabled')
   console.log('- Content size limit:', MAX_CONTENT_SIZE / 1024 / 1024 + 'MB')
