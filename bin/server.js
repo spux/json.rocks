@@ -5,6 +5,7 @@ import extractor from 'unfluff'
 import axios from 'axios'
 import fs from 'fs-extra'
 import url from 'url'
+import dns from 'dns/promises'
 
 // const scrapex = require('scrapex')
 import * as cheerio from 'cheerio'
@@ -29,6 +30,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { LRUCache } from 'lru-cache'
 import { isIP } from 'net'
+import basicAuth from '@fastify/basic-auth'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -134,19 +136,35 @@ function ipToNumber(ip) {
 function isBlockedIP(urlString) {
   try {
     const url = new URL(urlString)
-    const hostname = url.hostname
-    
-    // Check if it's an IP address
+    const hostname = url.hostname.toLowerCase()
+
+    // SECURITY FIX: Block ALL IPv6 addresses (prevents Slack-style bypasses)
+    // IPv6 addresses contain colons
+    if (hostname.includes(':')) {
+      console.log('Blocked IPv6 address:', hostname)
+      return true
+    }
+
+    // Block IPv6 localhost variations
+    if (hostname === '[::1]' ||
+        hostname === '[::ffff:127.0.0.1]' ||
+        hostname === '[0:0:0:0:0:0:0:1]' ||
+        hostname.startsWith('[::ffff:')) {
+      console.log('Blocked IPv6 localhost:', hostname)
+      return true
+    }
+
+    // Check if it's an IPv4 address
     if (isIP(hostname)) {
       const ipNum = ipToNumber(hostname)
-      
+
       return BLOCKED_IP_RANGES.some(range => {
         const startNum = ipToNumber(range.start)
         const endNum = ipToNumber(range.end)
         return ipNum >= startNum && ipNum <= endNum
       })
     }
-    
+
     // Check for localhost hostnames
     const blockedHostnames = ['localhost', 'metadata.google.internal']
     return blockedHostnames.includes(hostname.toLowerCase())
@@ -156,19 +174,62 @@ function isBlockedIP(urlString) {
 }
 
 function validateSecureUrl(urlString) {
+  // SECURITY FIX: Check for null bytes and control characters
+  if (urlString.includes('\0') || urlString.includes('%00')) {
+    throw new Error('URL contains null bytes')
+  }
+
+  // Check for other control characters
+  if (/[\x00-\x1f\x7f]/.test(urlString)) {
+    throw new Error('URL contains control characters')
+  }
+
   if (!isValidUrl(urlString)) {
     throw new Error('Invalid URL format')
   }
-  
+
   if (!isAllowedDomain(urlString)) {
     throw new Error('Domain not in allowlist. Contact admin to add trusted domains.')
   }
-  
+
   if (isBlockedIP(urlString)) {
     throw new Error('Access to private networks and localhost is blocked for security')
   }
-  
+
   return true
+}
+
+// SECURITY FIX: DNS rebinding protection
+async function validateUrlWithDNS(urlString) {
+  const url = new URL(urlString)
+  const hostname = url.hostname
+
+  // Skip DNS check for pure IP addresses (they're already validated)
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+    return isBlockedIP(urlString) ? false : true
+  }
+
+  try {
+    // Resolve all A records
+    const addresses = await dns.resolve4(hostname)
+
+    // Validate each resolved IP against blocklist
+    for (const ip of addresses) {
+      const testUrl = new URL(urlString)
+      testUrl.hostname = ip
+
+      if (isBlockedIP(testUrl.href)) {
+        throw new Error(`Domain ${hostname} resolves to blocked IP address ${ip}`)
+      }
+    }
+
+    return true
+  } catch (err) {
+    if (err.code === 'ENOTFOUND') {
+      throw new Error('Domain could not be resolved')
+    }
+    throw err
+  }
 }
 
 const argv = minimist(process.argv.slice(2))
@@ -251,6 +312,23 @@ await fastify.register((await import('fastify-rate-limit')).default, {
 })
 await fastify.register((await import('fastify-cors')).default, {
   origin: true
+})
+
+// SECURITY FIX: Register basic auth for admin endpoints
+await fastify.register(basicAuth, {
+  validate: async (username, password, req, reply) => {
+    const validUser = process.env.ADMIN_USER || 'admin'
+    const validPass = process.env.ADMIN_PASS
+
+    if (!validPass) {
+      throw new Error('ADMIN_PASS environment variable not set - admin endpoints protected')
+    }
+
+    if (username !== validUser || password !== validPass) {
+      return new Error('Unauthorized')
+    }
+  },
+  authenticate: { realm: 'json.rocks Admin' }
 })
 
 const user_agent_desktop =
@@ -456,9 +534,12 @@ fastify.get('/', async (request, reply) => {
         data = JSON.parse(await fs.readFile(mapped, 'utf8'))
         cache.set(uri, data) // Add to memory cache
       } else {
+        // SECURITY FIX: Validate DNS before making request (prevents DNS rebinding)
+        await validateUrlWithDNS(uri)
+
         // fetch with timeout and security limits
         console.log('extracting', uri)
-        var html = await axios.get(uri, { 
+        var html = await axios.get(uri, {
           headers: headers,
           timeout: 5000, // 5 second timeout (reduced from 10s)
           maxRedirects: 3, // Reduced redirects
@@ -471,7 +552,27 @@ fastify.get('/', async (request, reply) => {
           'Accept-Language': 'en-US,en;q=0.5',
           'Accept-Encoding': 'gzip, deflate',
           'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
+          'Upgrade-Insecure-Requests': '1',
+
+          // SECURITY FIX: Validate redirect destinations (prevents redirect bypass)
+          beforeRedirect: (options, responseDetails) => {
+            const redirectUrl = options.href
+
+            console.log('Following redirect to:', redirectUrl)
+
+            // Validate redirect protocol
+            if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
+              throw new Error(`Invalid redirect protocol: ${redirectUrl}`)
+            }
+
+            // Check if redirect destination is blocked
+            if (isBlockedIP(redirectUrl)) {
+              throw new Error(`Redirect to blocked IP address: ${redirectUrl}`)
+            }
+
+            // Note: We allow redirects to domains outside allowlist for flexibility
+            // but they must still pass IP blocking checks
+          }
         })
 
         // // extract with error handling
@@ -695,8 +796,10 @@ process.on('SIGTERM', () => {
   })
 })
 
-// Add endpoint to reload allowed domains (for admin use)
-fastify.post('/admin/reload-domains', async (request, reply) => {
+// SECURITY FIX: Admin endpoints now protected with basic auth
+fastify.post('/admin/reload-domains', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
   try {
     loadAllowedDomains()
     return {
@@ -712,8 +815,10 @@ fastify.post('/admin/reload-domains', async (request, reply) => {
   }
 })
 
-// Add endpoint to view current allowed domains
-fastify.get('/admin/domains', async (request, reply) => {
+// SECURITY FIX: Admin endpoint protected with basic auth
+fastify.get('/admin/domains', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
   return {
     allowedDomains: ALLOWED_DOMAINS,
     count: ALLOWED_DOMAINS.length,
