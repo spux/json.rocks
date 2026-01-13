@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/spux/json.rocks#readme",
   "dependencies": {
+    "@fastify/basic-auth": "^3.0.2",
     "axios": "^1.13.2",
     "cheerio": "^1.0.0-rc.3",
     "fastify": "^3.4.1",
