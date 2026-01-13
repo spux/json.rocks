@@ -108,3 +108,9 @@ dist
 
 # editor
 .vscode
+
+# task management
+.task/
+
+# ssl certificates
+*.pem

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">
+  <!-- Colorful pinwheel/droplet design -->
+  <g transform="translate(50, 50)">
+    <!-- Orange droplet - top right -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#F4A623" transform="rotate(45)"/>
+    <!-- Pink/Magenta droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#E91E8C" transform="rotate(90)"/>
+    <!-- Light green droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#A4C639" transform="rotate(135)"/>
+    <!-- Red droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#DB4437" transform="rotate(180)"/>
+    <!-- Blue droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#4285F4" transform="rotate(225)"/>
+    <!-- Cyan droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#00BCD4" transform="rotate(270)"/>
+    <!-- Light blue droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#87CEEB" transform="rotate(315)"/>
+    <!-- Yellow/lime droplet -->
+    <ellipse cx="0" cy="-20" rx="8" ry="14" fill="#CDDC39" transform="rotate(0)"/>
+  </g>
+
+  <!-- JSON Rocks text with good contrast -->
+  <text x="95" y="62" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="#2196F3">JSON</text>
+  <text x="215" y="62" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="#37474F">Rocks</text>
+</svg>

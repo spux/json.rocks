@@ -3,11 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" href="https://spux.org/json.rocks/favicon.ico" />
-    <link
-      rel="stylesheet"
-      href="https://use.fontawesome.com/releases/v5.13.0/css/all.css"
-    />
+    <link rel="icon" href="/favicon.ico" />
     <style>
       body {
         margin: 0;
@@ -157,7 +153,7 @@
         width: 20px;
       }
 
-      .fa-search {
+      .search-icon-wrapper {
         position: absolute;
         margin-top: 17px;
         margin-left: 20px;
@@ -165,7 +161,11 @@
         outline: none;
         width: 20px;
         color: #9aa0a6;
-        width: 20px;
+      }
+      
+      .search-icon-wrapper:before {
+        content: "🔍";
+        font-size: 16px;
       }
 
       .language {
@@ -278,25 +278,26 @@
       <p>
         <img
           width="600"
-          src="https://raw.githubusercontent.com/spux/json.rocks/gh-pages/images/transparentlogo.png"
+          src="images/logo.svg"
+          alt="JSON Rocks"
         />
       </p>
       <a href="#"
         ><img
           class="keyboard"
-          src="https://www.gstatic.com/inputtools/images/tia.png"
+          src="images/keyboard.png"
           alt=""
       /></a>
       <a href="#"
         ><img
           class="mic-json"
-          src="https://raw.githubusercontent.com/spux/json.rocks/gh-pages/images/googlemic_color_24dp.png"
+          src="images/googlemic_color_24dp.png"
           alt=""
       /></a>
 
       <form name="q" action="/">
         <div class="search-bar">
-          <i class="fas fa-search"></i>
+          <span class="search-icon-wrapper"></span>
 
           <input
             type="text"
