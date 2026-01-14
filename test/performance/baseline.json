@@ -1,0 +1,130 @@
+{
+  "version": "1.0.0",
+  "description": "Performance baseline metrics for json.rocks",
+  "lastUpdated": "2026-01-14",
+  "environment": {
+    "nodeVersion": "18.x",
+    "platform": "linux",
+    "cpu": "4 cores",
+    "memory": "8GB"
+  },
+  "metrics": {
+    "cachedRequests": {
+      "p50": 5,
+      "p95": 10,
+      "p99": 20,
+      "unit": "ms",
+      "description": "Response time for cached content"
+    },
+    "uncachedRequests": {
+      "p50": 500,
+      "p95": 2000,
+      "p99": 4000,
+      "unit": "ms",
+      "description": "Response time for non-cached content (excluding target site latency)"
+    },
+    "healthCheck": {
+      "p95": 5,
+      "unit": "ms",
+      "description": "Health endpoint response time"
+    },
+    "staticFiles": {
+      "p95": 20,
+      "unit": "ms",
+      "description": "Static file serving response time"
+    },
+    "cacheHitRate": {
+      "minimum": 0.8,
+      "unit": "ratio",
+      "description": "Percentage of requests served from cache"
+    },
+    "throughput": {
+      "cachedContent": 100,
+      "uncachedContent": 10,
+      "unit": "requests/second",
+      "description": "Server throughput capacity"
+    },
+    "rateLimiting": {
+      "cachedLimit": 100,
+      "uncachedLimit": 5,
+      "unit": "requests/minute/ip",
+      "accuracy": 0.99,
+      "description": "Rate limit enforcement accuracy"
+    },
+    "concurrency": {
+      "maxPerIP": 5,
+      "description": "Maximum concurrent requests per IP",
+      "enforcementAccuracy": 0.95
+    },
+    "memory": {
+      "baseline": 100,
+      "withFullCache": 200,
+      "underLoad": 500,
+      "unit": "MB",
+      "description": "Memory usage levels"
+    },
+    "ssrfProtectionOverhead": {
+      "dnsValidation": 50,
+      "ipBlocking": 1,
+      "urlValidation": 5,
+      "total": 100,
+      "unit": "ms",
+      "description": "Performance overhead of security features"
+    }
+  },
+  "regressionThresholds": {
+    "cachedP95": {
+      "value": 10,
+      "maxIncrease": 0.2,
+      "description": "95th percentile cached requests should not increase >20%"
+    },
+    "uncachedP95": {
+      "value": 2000,
+      "maxIncrease": 0.2,
+      "description": "95th percentile uncached requests should not increase >20%"
+    },
+    "cacheHitRate": {
+      "value": 0.8,
+      "maxDecrease": 0.1,
+      "description": "Cache hit rate should not decrease >10%"
+    },
+    "memoryUsage": {
+      "value": 150,
+      "maxIncrease": 0.5,
+      "description": "Average memory usage should not increase >50%"
+    },
+    "throughput": {
+      "value": 100,
+      "maxDecrease": 0.2,
+      "description": "Throughput should not decrease >20%"
+    }
+  },
+  "loadTestResults": {
+    "artillery": {
+      "lastRun": "2026-01-14",
+      "duration": 180,
+      "totalRequests": 1800,
+      "successRate": 0.95,
+      "p95": 150,
+      "p99": 500,
+      "unit": "ms"
+    },
+    "k6": {
+      "lastRun": "2026-01-14",
+      "duration": 180,
+      "virtualUsers": 50,
+      "totalRequests": 9000,
+      "successRate": 0.96,
+      "p95": 180,
+      "p99": 600,
+      "unit": "ms"
+    }
+  },
+  "notes": [
+    "Baseline metrics are measured on a dedicated server without other load",
+    "Production performance may vary based on hardware, network, and target site latency",
+    "Cached request performance is highly dependent on LRU cache implementation",
+    "Uncached request performance is dominated by target site response time",
+    "These baselines should be updated quarterly or after significant code changes"
+  ]
+}

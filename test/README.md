@@ -1,6 +1,6 @@
 # Test Suite Documentation
 
-Comprehensive test suite for json.rocks covering security, API endpoints, and integration testing.
+Comprehensive test suite for json.rocks covering security, API endpoints, integration, and performance testing.
 
 ## Overview
 
@@ -8,19 +8,29 @@ This test suite validates:
 - **Security Features**: SSRF protections, IP blocking, DNS rebinding prevention
 - **API Endpoints**: Main scraping endpoint, static files, admin endpoints
 - **Integration**: Server startup, domain loading, caching, error handling
+- **Performance**: Rate limiting, caching, concurrency, response times, load testing
 
 ## Test Structure
 
 ```
 test/
 ├── security/
-│   └── ssrf-protection.test.js    # SSRF vulnerability tests
+│   └── ssrf-protection.test.js       # SSRF vulnerability tests
 ├── api/
-│   ├── endpoints.test.js          # API endpoint tests
-│   └── authentication.test.js     # API authentication tests
+│   ├── endpoints.test.js             # API endpoint tests
+│   └── authentication.test.js        # API authentication tests
 ├── integration/
-│   └── server.test.js             # Integration and server lifecycle tests
-└── README.md                      # This file
+│   └── server.test.js                # Integration and server lifecycle tests
+├── performance/
+│   ├── rate-limit.test.js            # Rate limiting accuracy tests
+│   ├── cache.test.js                 # Cache performance tests
+│   ├── concurrency.test.js           # Concurrent request tests
+│   ├── response-time.test.js         # Response time benchmarks
+│   ├── artillery-load-test.yml       # Artillery load test config
+│   ├── k6-load-test.js               # k6 load test script
+│   ├── baseline.json                 # Performance baseline metrics
+│   └── README.md                     # Performance testing guide
+└── README.md                         # This file
 ```
 
 ## Running Tests
@@ -38,11 +48,41 @@ npm run test:security
 # API tests only
 npm run test:api
 
+# Integration tests only
+npm run test:integration
+
+# Performance tests (requires server running)
+npm run test:performance
+
+# Performance: Rate limiting
+npm run test:performance:rate
+
+# Performance: Cache
+npm run test:performance:cache
+
+# Performance: Concurrency
+npm run test:performance:concurrency
+
+# Performance: Response time
+npm run test:performance:response
+
 # Watch mode (re-run on changes)
 npm run test:watch
 
 # With coverage report
 npm run test:coverage
+```
+
+### Load Testing
+```bash
+# Artillery load test (requires: npm install -g artillery)
+npm run test:load:artillery
+
+# k6 load test (requires: k6 from https://k6.io)
+npm run test:load:k6
+
+# Benchmark (alias for performance tests)
+npm run benchmark
 ```
 
 ### Individual Test Files
@@ -203,6 +243,60 @@ npx mocha test/**/*.test.js --grep "SSRF"
    - Graceful shutdown procedure
    - Active request completion
    - Resource cleanup
+
+### Performance Tests (`test/performance/`)
+
+**Performance and Load Testing** - Validates performance characteristics under various conditions:
+
+1. **Rate Limiting Tests** (`rate-limit.test.js`)
+   - Cached content rate limit (100 req/min per IP)
+   - Non-cached content rate limit (5 req/min per IP)
+   - Rate limit accuracy and enforcement
+   - Rate limit recovery after window
+   - Per-IP isolation
+   - API key-based rate limits
+
+2. **Cache Performance Tests** (`cache.test.js`)
+   - Cache hit performance (10x+ speedup)
+   - LRU eviction at capacity (100 items)
+   - Cache TTL (30 minutes)
+   - Concurrent cache access
+   - Cache statistics tracking
+   - Performance targets: p50 <5ms, p95 <10ms, p99 <20ms
+
+3. **Concurrency Tests** (`concurrency.test.js`)
+   - Max 5 concurrent requests per IP
+   - Active request tracking
+   - Request cleanup
+   - Server throughput (req/s)
+   - Mixed workload performance
+   - Error recovery under load
+
+4. **Response Time Benchmarks** (`response-time.test.js`)
+   - Cached request percentiles (p50, p95, p99)
+   - Health check performance (<5ms)
+   - Static file serving (<20ms)
+   - Response time consistency
+   - Performance regression detection
+
+5. **Load Testing**
+   - **Artillery** (`artillery-load-test.yml`): Realistic traffic scenarios
+     - Warm-up, sustained, burst, cool-down phases
+     - Multiple scenarios (70% cached, 20% uncached, 5% health, 5% refresh)
+     - Performance assertions (error rate <5%, p95 <2s, p99 <5s)
+   - **k6** (`k6-load-test.js`): Advanced load testing
+     - Multiple stages with varying virtual users
+     - Custom metrics tracking
+     - Performance thresholds with auto-fail
+     - Cloud testing support
+
+6. **Performance Baselines** (`baseline.json`)
+   - Expected performance metrics
+   - Regression thresholds
+   - Memory usage targets
+   - Throughput benchmarks
+
+**See**: [test/performance/README.md](performance/README.md) for detailed performance testing guide
 
 ## Test Types
 
@@ -374,23 +468,19 @@ Critical security features that must be tested:
 ## Related Documentation
 
 - [Issue #10](https://github.com/spux/json.rocks/issues/10) - Original test suite proposal
+- [Issue #13](https://github.com/spux/json.rocks/issues/13) - Performance testing requirements
 - [PR #7](https://github.com/spux/json.rocks/pull/7) - Security fixes being tested
 - [PR #8](https://github.com/spux/json.rocks/pull/8) - Domain allowlist implementation
 - [README.md](../README.md) - Main project documentation
 - [DOMAIN_MANAGEMENT.md](../DOMAIN_MANAGEMENT.md) - Domain configuration guide
+- [performance/README.md](performance/README.md) - Performance testing guide
 
 ## Future Enhancements
 
 1. **Functional Tests**
-   - Start server instances
-   - Make actual HTTP requests
-   - Test real scraping functionality
-
-2. **Performance Tests**
-   - Load testing
-   - Rate limit accuracy
-   - Cache performance
-   - See Issue #13
+   - Start server instances automatically
+   - Make actual HTTP requests to running server
+   - Test real scraping functionality end-to-end
 
 3. **E2E Tests**
    - Complete user workflows

@@ -1,0 +1,135 @@
+# Artillery.io load testing configuration for json.rocks
+#
+# Installation:
+#   npm install -g artillery
+#
+# Usage:
+#   artillery run test/performance/artillery-load-test.yml
+#   artillery run test/performance/artillery-load-test.yml --target https://json.rocks
+#
+# Generate HTML report:
+#   artillery run --output report.json test/performance/artillery-load-test.yml
+#   artillery report report.json
+#
+# See: https://www.artillery.io/docs
+
+config:
+  target: "http://localhost:9980"
+  phases:
+    # Warm-up phase
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm-up - 5 req/s"
+
+    # Sustained load
+    - duration: 60
+      arrivalRate: 10
+      name: "Sustained load - 10 req/s"
+
+    # Burst load
+    - duration: 30
+      arrivalRate: 50
+      name: "Burst load - 50 req/s"
+
+    # Cool down
+    - duration: 20
+      arrivalRate: 2
+      name: "Cool down - 2 req/s"
+
+  # Performance targets
+  ensure:
+    maxErrorRate: 5  # Max 5% error rate
+    p95: 2000        # 95th percentile < 2000ms
+    p99: 5000        # 99th percentile < 5000ms
+
+  # HTTP configuration
+  http:
+    timeout: 10
+
+  # Variables for dynamic scenarios
+  variables:
+    test_domain: "https://github.com"
+
+scenarios:
+  # Scenario 1: Cached requests (most common in production)
+  - name: "Cached requests"
+    weight: 70
+    flow:
+      - get:
+          url: "/?uri={{ test_domain }}/spux/json.rocks"
+          headers:
+            User-Agent: "Artillery Load Test"
+          expect:
+            - statusCode: [200, 403, 429]
+          capture:
+            - json: "$.title"
+              as: "pageTitle"
+
+  # Scenario 2: Uncached requests (unique URLs)
+  - name: "Uncached requests"
+    weight: 20
+    flow:
+      - get:
+          url: "/?uri={{ test_domain }}/page/{{ $randomNumber(1, 1000) }}"
+          headers:
+            User-Agent: "Artillery Load Test"
+          expect:
+            - statusCode: [200, 403, 429]
+
+  # Scenario 3: Health checks
+  - name: "Health checks"
+    weight: 5
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: status
+
+  # Scenario 4: Cache refresh
+  - name: "Cache refresh"
+    weight: 5
+    flow:
+      - get:
+          url: "/?uri={{ test_domain }}/spux/json.rocks&refresh=true"
+          headers:
+            User-Agent: "Artillery Load Test"
+          expect:
+            - statusCode: [200, 403, 429]
+
+  # Scenario 5: Mixed workload
+  - name: "Mixed workload"
+    weight: 10
+    flow:
+      # Cached request
+      - get:
+          url: "/?uri={{ test_domain }}/spux/json.rocks"
+
+      # Wait a bit
+      - think: 0.5
+
+      # Uncached request
+      - get:
+          url: "/?uri={{ test_domain }}/new/{{ $randomString(10) }}"
+
+      # Health check
+      - think: 0.2
+      - get:
+          url: "/health"
+
+plugins:
+  # Metrics plugin for detailed statistics
+  metrics-by-endpoint:
+    # Group metrics by endpoint
+    stripQueryString: false
+
+  # Expect plugin for assertions
+  expect: {}
+
+# Custom metrics to track
+metrics:
+  # Response time buckets
+  - name: "response_time_buckets"
+    type: histogram
+    buckets: [10, 50, 100, 200, 500, 1000, 2000, 5000]
