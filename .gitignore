@@ -1,8 +1,10 @@
 # data - cache and custom configurations (keep default allowlist)
 data/*
 !data/allowed-domains-top1000.json
+!data/api-keys.example.json
 data/allowed-domains.json
 data/allowed-domains-custom.json
+data/api-keys.json
 
 # Logs
 logs

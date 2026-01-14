@@ -16,7 +16,8 @@ test/
 ├── security/
 │   └── ssrf-protection.test.js    # SSRF vulnerability tests
 ├── api/
-│   └── endpoints.test.js          # API endpoint tests
+│   ├── endpoints.test.js          # API endpoint tests
+│   └── authentication.test.js     # API authentication tests
 ├── integration/
 │   └── server.test.js             # Integration and server lifecycle tests
 └── README.md                      # This file
@@ -126,6 +127,43 @@ npx mocha test/**/*.test.js --grep "SSRF"
    - X-XSS-Protection
    - Content-Security-Policy
    - CORS headers
+
+**Authentication Tests** - Validates API key authentication system:
+
+1. **Authentication Modes**
+   - Open mode (no authentication required)
+   - Optional mode (authenticated requests get better limits)
+   - Required mode (all requests need API key)
+
+2. **API Key Validation**
+   - Header-based authentication (X-API-Key)
+   - Query parameter authentication (api_key)
+   - Invalid key rejection
+   - Disabled key handling
+
+3. **Rate Limiting with Authentication**
+   - Per-key rate limits
+   - Authenticated vs unauthenticated limits
+   - Cached vs uncached content limits
+   - Rate limit response structure
+
+4. **Admin Endpoints for Keys**
+   - GET /admin/keys (view keys and statistics)
+   - POST /admin/reload-keys (reload from file)
+   - Authentication requirement
+   - Usage statistics tracking
+
+5. **Usage Statistics**
+   - Request counting per key
+   - Cached vs uncached tracking
+   - Last used timestamp
+   - Statistics persistence
+
+6. **Security**
+   - API key not exposed in errors
+   - Special character handling
+   - Long key handling
+   - Header priority over query parameter
 
 ### Integration Tests (`test/integration/`)
 
@@ -328,6 +366,10 @@ Critical security features that must be tested:
 - [ ] Rate limiting (cached vs uncached)
 - [ ] Admin endpoint authentication
 - [ ] Domain allowlist enforcement
+- [ ] API key authentication
+- [ ] Per-key rate limiting
+- [ ] API key not exposed in errors
+- [ ] Usage statistics tracking
 
 ## Related Documentation
 
