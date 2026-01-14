@@ -1186,6 +1186,114 @@ fastify.post('/admin/reload-keys', {
   }
 })
 
+// Admin endpoint: Clear memory cache
+fastify.post('/admin/clear-cache', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
+  try {
+    const memCacheSize = cache.size
+    const errorCacheSize = recentErrors.size
+
+    cache.clear()
+    recentErrors.clear()
+
+    return {
+      success: true,
+      message: 'Memory caches cleared',
+      cleared: {
+        urlCache: memCacheSize,
+        errorCache: errorCacheSize
+      }
+    }
+  } catch (err) {
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    })
+  }
+})
+
+// Admin endpoint: Clear file cache
+fastify.post('/admin/clear-file-cache', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
+  try {
+    const dataDir = path.join(__dirname, '../data')
+    const entries = await fs.readdir(dataDir)
+
+    // Only remove directories (cached domains), keep JSON config files
+    const cacheDirectories = []
+    for (const entry of entries) {
+      const entryPath = path.join(dataDir, entry)
+      const stat = await fs.stat(entryPath)
+      if (stat.isDirectory()) {
+        await fs.remove(entryPath)
+        cacheDirectories.push(entry)
+      }
+    }
+
+    return {
+      success: true,
+      message: 'File cache cleared',
+      cleared: {
+        directories: cacheDirectories.length,
+        domains: cacheDirectories
+      }
+    }
+  } catch (err) {
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    })
+  }
+})
+
+// Admin endpoint: Clear all caches (memory + file)
+fastify.post('/admin/clear-all-caches', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
+  try {
+    // Clear memory caches
+    const memCacheSize = cache.size
+    const errorCacheSize = recentErrors.size
+    cache.clear()
+    recentErrors.clear()
+
+    // Clear file caches
+    const dataDir = path.join(__dirname, '../data')
+    const entries = await fs.readdir(dataDir)
+    const cacheDirectories = []
+    for (const entry of entries) {
+      const entryPath = path.join(dataDir, entry)
+      const stat = await fs.stat(entryPath)
+      if (stat.isDirectory()) {
+        await fs.remove(entryPath)
+        cacheDirectories.push(entry)
+      }
+    }
+
+    return {
+      success: true,
+      message: 'All caches cleared',
+      cleared: {
+        memory: {
+          urlCache: memCacheSize,
+          errorCache: errorCacheSize
+        },
+        files: {
+          directories: cacheDirectories.length,
+          domains: cacheDirectories
+        }
+      }
+    }
+  } catch (err) {
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    })
+  }
+})
+
 // RUN SERVER HTTP
 fastify.listen(data.port, '0.0.0.0', (err, address) => {
   if (err) throw err
@@ -1209,4 +1317,7 @@ fastify.listen(data.port, '0.0.0.0', (err, address) => {
   console.log('- POST /admin/reload-domains - Reload domains from file')
   console.log('- GET /admin/keys - View API keys and usage statistics')
   console.log('- POST /admin/reload-keys - Reload API keys from file')
+  console.log('- POST /admin/clear-cache - Clear memory cache')
+  console.log('- POST /admin/clear-file-cache - Clear file cache')
+  console.log('- POST /admin/clear-all-caches - Clear all caches')
 })
