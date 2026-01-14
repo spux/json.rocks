@@ -46,41 +46,40 @@ const MAX_CONTENT_SIZE = 5 * 1024 * 1024 // 5MB limit
 const MAX_CONCURRENT_REQUESTS = 5
 const activeRequests = new Map()
 
-// Load allowed domains from configuration file
+// Load allowed domains from configuration files
 let ALLOWED_DOMAINS = []
 
 function loadAllowedDomains() {
-  const allowlistPath = path.join(__dirname, '../data/allowed-domains.json')
-  
+  const defaultListPath = path.join(__dirname, '../data/allowed-domains-top1000.json')
+  const customListPath = path.join(__dirname, '../data/allowed-domains-custom.json')
+
+  let defaultDomains = []
+  let customDomains = []
+
   try {
-    if (fs.existsSync(allowlistPath)) {
-      const config = JSON.parse(fs.readFileSync(allowlistPath, 'utf8'))
-      ALLOWED_DOMAINS = config.domains || []
-      console.log(`Loaded ${ALLOWED_DOMAINS.length} allowed domains from config`)
+    // Load default top 1000 domains
+    if (fs.existsSync(defaultListPath)) {
+      const defaultConfig = JSON.parse(fs.readFileSync(defaultListPath, 'utf8'))
+      defaultDomains = defaultConfig.domains || []
+      console.log(`Loaded ${defaultDomains.length} default domains from top1000 list`)
     } else {
-      // Create default allowlist file if it doesn't exist
-      const defaultConfig = {
-        domains: [
-          'github.com',
-          'stackoverflow.com',
-          'wikipedia.org',
-          'example.com',
-          'httpbin.org',
-          'jsonplaceholder.typicode.com'
-        ],
-        comments: [
-          'Add trusted domains here for scraping.',
-          'Subdomains are automatically included (e.g., "github.com" allows "api.github.com")',
-          'This file is in .gitignore so each deployment can have custom domains'
-        ],
-        lastUpdated: new Date().toISOString()
-      }
-      
-      fs.ensureDirSync(path.dirname(allowlistPath))
-      fs.writeFileSync(allowlistPath, JSON.stringify(defaultConfig, null, 2))
-      ALLOWED_DOMAINS = defaultConfig.domains
-      console.log(`Created default allowed-domains.json with ${ALLOWED_DOMAINS.length} domains`)
+      console.warn('Default domain list not found, using minimal fallback')
+      defaultDomains = ['github.com', 'stackoverflow.com', 'wikipedia.org', 'example.com', 'httpbin.org']
     }
+
+    // Load custom domains (optional)
+    if (fs.existsSync(customListPath)) {
+      const customConfig = JSON.parse(fs.readFileSync(customListPath, 'utf8'))
+      customDomains = Array.isArray(customConfig) ? customConfig : (customConfig.domains || [])
+      console.log(`Loaded ${customDomains.length} custom domains`)
+    } else {
+      console.log('No custom domains file found (this is optional)')
+    }
+
+    // Merge and deduplicate
+    ALLOWED_DOMAINS = [...new Set([...defaultDomains, ...customDomains])]
+    console.log(`Total allowed domains: ${ALLOWED_DOMAINS.length}`)
+
   } catch (err) {
     console.error('Error loading allowed domains:', err.message)
     console.log('Using fallback allowlist')
