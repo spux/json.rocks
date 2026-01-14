@@ -357,15 +357,15 @@ function mapURI (parsed, root, origin) {
 fastify.get('/js/:filename', async (request, reply) => {
   const filename = request.params.filename
   const allowedFiles = ['json-renderer.js']
-  
+
   if (!allowedFiles.includes(filename)) {
     return reply.code(404).send({ error: 'File not found' })
   }
-  
+
   try {
     const filePath = path.join(__dirname, '../js', filename)
     const fileContent = await fs.readFile(filePath, 'utf8')
-    
+
     reply
       .code(200)
       .header('Content-Type', 'application/javascript')
@@ -373,6 +373,69 @@ fastify.get('/js/:filename', async (request, reply) => {
       .send(fileContent)
   } catch (err) {
     reply.code(404).send({ error: 'File not found' })
+  }
+})
+
+// Serve static image files
+fastify.get('/images/:filename', async (request, reply) => {
+  const filename = request.params.filename
+
+  // Security: only allow safe filenames (alphanumeric, dash, underscore, dot)
+  if (!/^[a-zA-Z0-9_\-\.]+$/.test(filename)) {
+    return reply.code(404).send({ error: 'File not found' })
+  }
+
+  try {
+    const filePath = path.join(__dirname, '../images', filename)
+
+    // Check if file exists
+    if (!await fs.pathExists(filePath)) {
+      return reply.code(404).send({ error: 'File not found' })
+    }
+
+    // Determine content type based on extension
+    const ext = path.extname(filename).toLowerCase()
+    let contentType = 'application/octet-stream'
+
+    if (ext === '.svg') {
+      contentType = 'image/svg+xml'
+    } else if (ext === '.png') {
+      contentType = 'image/png'
+    } else if (ext === '.jpg' || ext === '.jpeg') {
+      contentType = 'image/jpeg'
+    } else if (ext === '.gif') {
+      contentType = 'image/gif'
+    } else if (ext === '.webp') {
+      contentType = 'image/webp'
+    } else if (ext === '.ico') {
+      contentType = 'image/x-icon'
+    }
+
+    const fileContent = await fs.readFile(filePath)
+
+    reply
+      .code(200)
+      .header('Content-Type', contentType)
+      .header('Cache-Control', 'public, max-age=86400') // 24 hour cache
+      .send(fileContent)
+  } catch (err) {
+    reply.code(404).send({ error: 'File not found' })
+  }
+})
+
+// Serve favicon
+fastify.get('/favicon.ico', async (request, reply) => {
+  try {
+    const filePath = path.join(__dirname, '../favicon.ico')
+    const fileContent = await fs.readFile(filePath)
+
+    reply
+      .code(200)
+      .header('Content-Type', 'image/x-icon')
+      .header('Cache-Control', 'public, max-age=86400') // 24 hour cache
+      .send(fileContent)
+  } catch (err) {
+    reply.code(404).send({ error: 'Favicon not found' })
   }
 })
 
