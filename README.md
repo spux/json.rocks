@@ -317,13 +317,68 @@ To add your own domains without modifying the default list:
 
 See [DOMAIN_MANAGEMENT.md](DOMAIN_MANAGEMENT.md) for detailed configuration guide.
 
+### Environment Variables
+
+Configure json.rocks using environment variables:
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `NODE_ENV` | Environment mode | `development` | No |
+| `AUTH_MODE` | Authentication mode | `open` | No |
+| `ADMIN_USER` | Admin username | `admin` | No |
+| `ADMIN_PASS` | Admin password | None | **Yes** |
+
+**Example:**
+```bash
+export NODE_ENV=production
+export ADMIN_PASS=your-secure-password
+export AUTH_MODE=optional
+node bin/server.js
+```
+
+**Authentication modes:**
+- `open` - No authentication required (default)
+- `optional` - Authenticated requests get higher rate limits
+- `required` - All requests must include valid API key
+
+See [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) for complete reference.
+
+### API Authentication
+
+Protect your instance and get custom rate limits with API key authentication:
+
+```bash
+# Using X-API-Key header (recommended)
+curl -H "X-API-Key: jr_live_key_123" "http://localhost:9980/?uri=https://example.com"
+
+# Or via query parameter
+curl "http://localhost:9980/?uri=https://example.com&api_key=jr_live_key_123"
+```
+
+Configure API keys in `data/api-keys.json`:
+```json
+{
+  "keys": [{
+    "key": "jr_live_production_key_abc123",
+    "name": "Production App",
+    "enabled": true,
+    "rateLimit": {
+      "cached": 1000,
+      "uncached": 100
+    }
+  }]
+}
+```
+
+See [API_AUTHENTICATION.md](docs/API_AUTHENTICATION.md) for detailed setup.
+
 ### Rate Limiting
 
-Default limits:
-- **Cached requests:** 100 requests/minute per IP
-- **Non-cached requests:** 5 requests/minute per IP
+Default limits per IP address (or per API key when authenticated):
+- **Cached requests:** 100 requests/minute
+- **Non-cached requests:** 5 requests/minute
 
-Configured in `bin/server.js` (lines 229-251).
+Higher limits available with API key authentication.
 
 ### Caching
 
@@ -394,6 +449,12 @@ curl "http://localhost:9980/?uri=https://example.com&refresh=true"
 
 ## 📦 Deployment
 
+**Production deployment guides:**
+- 📘 [PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md) - Complete production guide
+- ⚙️ [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md) - Configuration reference
+- 🔧 [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- 📁 [examples/](examples/) - Configuration file templates
+
 ### Docker (Recommended)
 
 ```dockerfile
@@ -434,9 +495,10 @@ services:
 
 ### Production Deployment
 
-**Using PM2:**
+**Quick start with PM2:**
 ```bash
 npm install -g pm2
+export ADMIN_PASS=your-secure-password
 pm2 start bin/server.js --name json-rocks
 pm2 save
 pm2 startup
@@ -456,6 +518,11 @@ server {
     }
 }
 ```
+
+**For production-ready deployments, see:**
+- [PRODUCTION_DEPLOYMENT.md](docs/PRODUCTION_DEPLOYMENT.md) - Complete guide with PM2, Docker, systemd, Kubernetes
+- [examples/](examples/) - Production configuration templates
+- Pre-deployment checklist, security hardening, monitoring, scaling, and more
 
 ---
 

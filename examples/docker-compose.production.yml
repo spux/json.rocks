@@ -1,0 +1,86 @@
+version: '3.8'
+
+# Production Docker Compose configuration for json.rocks
+#
+# Usage:
+#   1. Copy this file to your deployment directory
+#   2. Create .env.production file with secrets
+#   3. Run: docker-compose -f docker-compose.production.yml up -d
+#
+# See: docs/PRODUCTION_DEPLOYMENT.md
+
+services:
+  json-rocks:
+    build: .
+    container_name: json-rocks
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    volumes:
+      # Persistent data (API keys, custom domains)
+      - ./data:/app/data
+      # Logs
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - ADMIN_USER=admin
+      - ADMIN_PASS=${ADMIN_PASS}  # Set in .env.production
+      - AUTH_MODE=${AUTH_MODE:-optional}  # Default to optional
+    env_file:
+      - .env.production
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9980/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - json-rocks-net
+    labels:
+      - "com.json-rocks.service=api"
+      - "com.json-rocks.environment=production"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Optional: nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: json-rocks-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - /var/www/letsencrypt:/var/www/letsencrypt:ro
+    depends_on:
+      json-rocks:
+        condition: service_healthy
+    networks:
+      - json-rocks-net
+    labels:
+      - "com.json-rocks.service=proxy"
+
+networks:
+  json-rocks-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# Optional: Volumes for persistence across container recreation
+volumes:
+  data:
+  logs:
