@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "description": "API keys for json.rocks authentication",
+  "keys": [
+    {
+      "key": "jr_live_example_key_12345",
+      "name": "Example Chat App",
+      "description": "Example API key for demonstration",
+      "created": "2026-01-14T00:00:00Z",
+      "enabled": true,
+      "rateLimit": {
+        "cached": 1000,
+        "uncached": 100,
+        "daily": 10000
+      },
+      "domains": ["*"]
+    }
+  ]
+}

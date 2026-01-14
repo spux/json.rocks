@@ -60,6 +60,11 @@ const MAX_CONTENT_SIZE = 5 * 1024 * 1024 // 5MB limit
 const MAX_CONCURRENT_REQUESTS = 5
 const activeRequests = new Map()
 
+// Authentication configuration
+const AUTH_MODE = process.env.AUTH_MODE || 'open' // open, optional, required
+let API_KEYS = []
+const keyUsageStats = new Map() // Track usage per key
+
 // Load allowed domains from configuration files
 let ALLOWED_DOMAINS = []
 
@@ -103,6 +108,87 @@ function loadAllowedDomains() {
 
 // Load allowed domains on startup
 loadAllowedDomains()
+
+// Load API keys from configuration file
+function loadApiKeys() {
+  const apiKeysPath = path.join(__dirname, '../data/api-keys.json')
+
+  try {
+    if (fs.existsSync(apiKeysPath)) {
+      const apiKeysConfig = JSON.parse(fs.readFileSync(apiKeysPath, 'utf8'))
+      API_KEYS = apiKeysConfig.keys || []
+      console.log(`Loaded ${API_KEYS.length} API keys`)
+
+      // Initialize usage stats for each key
+      API_KEYS.forEach(keyConfig => {
+        if (!keyUsageStats.has(keyConfig.key)) {
+          keyUsageStats.set(keyConfig.key, {
+            requests: 0,
+            cached: 0,
+            uncached: 0,
+            lastUsed: null,
+            created: keyConfig.created || new Date().toISOString()
+          })
+        }
+      })
+    } else {
+      console.log('No API keys file found (authentication disabled)')
+      API_KEYS = []
+    }
+  } catch (err) {
+    console.error('Error loading API keys:', err.message)
+    API_KEYS = []
+  }
+}
+
+// Validate API key and return key configuration
+function validateApiKey(apiKey) {
+  if (!apiKey) return null
+
+  const keyConfig = API_KEYS.find(k => k.key === apiKey && k.enabled !== false)
+  return keyConfig || null
+}
+
+// Check if request is authenticated
+function checkAuthentication(request) {
+  // Extract API key from header or query parameter
+  const apiKey = request.headers['x-api-key'] || request.query.api_key
+
+  if (!apiKey) {
+    return { authenticated: false, key: null, keyConfig: null }
+  }
+
+  const keyConfig = validateApiKey(apiKey)
+
+  if (!keyConfig) {
+    return { authenticated: false, key: apiKey, keyConfig: null, invalid: true }
+  }
+
+  // Update usage stats
+  const stats = keyUsageStats.get(apiKey)
+  if (stats) {
+    stats.lastUsed = new Date().toISOString()
+    stats.requests++
+  }
+
+  return { authenticated: true, key: apiKey, keyConfig }
+}
+
+// Get rate limit for request (based on API key or default)
+function getRateLimitForRequest(request, isCached) {
+  const auth = checkAuthentication(request)
+
+  if (auth.authenticated && auth.keyConfig && auth.keyConfig.rateLimit) {
+    // Use per-key rate limits
+    return isCached ? auth.keyConfig.rateLimit.cached : auth.keyConfig.rateLimit.uncached
+  }
+
+  // Use default rate limits
+  return isCached ? 100 : 5
+}
+
+// Load API keys on startup
+loadApiKeys()
 
 // Blocked IP ranges (RFC 1918 private networks, localhost, metadata endpoints)
 const BLOCKED_IP_RANGES = [
@@ -304,22 +390,26 @@ await fastify.register((await import('fastify-rate-limit')).default, {
   max: (req, key) => {
     // Check if the request URI is in cache
     const uri = req.query?.uri
-    if (uri && cache.has(uri)) {
-      return 100  // 100 requests per minute for cached content
-    }
-    return 5     // 5 requests per minute for non-cached content
+    const isCached = uri && cache.has(uri)
+    return getRateLimitForRequest(req, isCached)
   },
   timeWindow: '1 minute',
-  keyGenerator: (req) => req.ip, // Ensure IP-based limiting
+  keyGenerator: (req) => {
+    // Use API key if authenticated, otherwise IP address
+    const auth = checkAuthentication(req)
+    return auth.authenticated ? `key:${auth.key}` : `ip:${req.ip}`
+  },
   skipOnError: false,
   errorResponseBuilder: (req, context) => {
     const uri = req.query?.uri
     const isCached = uri && cache.has(uri)
+    const auth = checkAuthentication(req)
     return {
       error: 'Rate limit exceeded',
       message: `Too many requests. Limit: ${context.max} per ${context.after}${isCached ? ' (cached)' : ' (non-cached)'}`,
       retryAfter: context.ttl,
-      type: isCached ? 'cached' : 'non-cached'
+      type: isCached ? 'cached' : 'non-cached',
+      authenticated: auth.authenticated
     }
   }
 })
@@ -547,7 +637,37 @@ fastify.get('/', async (request, reply) => {
   var uri = request.query.uri
   var filter = request.query.filter
   var refresh = request.query.refresh
-  
+
+  // Check authentication if required
+  const auth = checkAuthentication(request)
+
+  if (AUTH_MODE === 'required' && !auth.authenticated) {
+    return reply.code(401).send({
+      error: 'Authentication required',
+      message: 'API key required. Provide via X-API-Key header or api_key query parameter'
+    })
+  }
+
+  if (auth.invalid) {
+    return reply.code(403).send({
+      error: 'Invalid API key',
+      message: 'The provided API key is invalid or disabled'
+    })
+  }
+
+  // Update usage stats if authenticated
+  if (auth.authenticated && auth.keyConfig) {
+    const stats = keyUsageStats.get(auth.key)
+    const isCached = uri && cache.has(uri)
+    if (stats) {
+      if (isCached) {
+        stats.cached++
+      } else {
+        stats.uncached++
+      }
+    }
+  }
+
   // Check concurrent request limit
   const clientIP = request.ip
   const activeCount = activeRequests.get(clientIP) || 0
@@ -1008,18 +1128,85 @@ fastify.get('/admin/domains', {
   }
 })
 
+// Admin endpoint: Get all API keys with usage statistics
+fastify.get('/admin/keys', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
+  const keysWithStats = API_KEYS.map(keyConfig => {
+    const stats = keyUsageStats.get(keyConfig.key) || {
+      requests: 0,
+      cached: 0,
+      uncached: 0,
+      lastUsed: null,
+      created: keyConfig.created || 'unknown'
+    }
+
+    return {
+      key: keyConfig.key,
+      name: keyConfig.name,
+      description: keyConfig.description,
+      created: keyConfig.created,
+      enabled: keyConfig.enabled !== false,
+      rateLimit: keyConfig.rateLimit,
+      domains: keyConfig.domains,
+      usage: {
+        totalRequests: stats.requests,
+        cachedRequests: stats.cached,
+        uncachedRequests: stats.uncached,
+        lastUsed: stats.lastUsed
+      }
+    }
+  })
+
+  return {
+    count: API_KEYS.length,
+    authMode: AUTH_MODE,
+    keys: keysWithStats,
+    configFile: 'data/api-keys.json'
+  }
+})
+
+// Admin endpoint: Reload API keys from file
+fastify.post('/admin/reload-keys', {
+  onRequest: fastify.basicAuth
+}, async (request, reply) => {
+  try {
+    loadApiKeys()
+    return {
+      success: true,
+      message: `Reloaded ${API_KEYS.length} API keys`,
+      count: API_KEYS.length,
+      authMode: AUTH_MODE
+    }
+  } catch (err) {
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    })
+  }
+})
+
 // RUN SERVER HTTP
 fastify.listen(data.port, '0.0.0.0', (err, address) => {
   if (err) throw err
   fastify.log.info(`server listening on ${address}`)
   console.log('Security measures active:')
   console.log('- Rate limiting: 5 requests/minute per IP (non-cached), 100 requests/minute (cached)')
-  console.log('- Domain allowlist:', ALLOWED_DOMAINS.length, 'domains loaded from data/allowed-domains.json')
+  console.log('- Domain allowlist:', ALLOWED_DOMAINS.length, 'domains loaded')
   console.log('- Private IP blocking enabled')
   console.log('- Content size limit:', MAX_CONTENT_SIZE / 1024 / 1024 + 'MB')
   console.log('- Max concurrent requests per IP:', MAX_CONCURRENT_REQUESTS)
   console.log('')
+  console.log('Authentication:')
+  console.log('- Mode:', AUTH_MODE)
+  console.log('- API keys loaded:', API_KEYS.length)
+  if (API_KEYS.length > 0) {
+    console.log('- Per-key rate limits enabled')
+  }
+  console.log('')
   console.log('Admin endpoints:')
   console.log('- GET /admin/domains - View allowed domains')
   console.log('- POST /admin/reload-domains - Reload domains from file')
+  console.log('- GET /admin/keys - View API keys and usage statistics')
+  console.log('- POST /admin/reload-keys - Reload API keys from file')
 })
