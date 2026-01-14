@@ -36,10 +36,24 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // Initialize LRU cache for URL caching (max 100 items, 30 min TTL)
-const cache = new LRUCache({ 
-  max: 100, 
+const cache = new LRUCache({
+  max: 100,
   ttl: 1000 * 60 * 30 // 30 min TTL
 })
+
+// Error deduplication cache (max 1000 errors, 5 min TTL)
+const recentErrors = new LRUCache({
+  max: 1000,
+  ttl: 1000 * 60 * 5 // 5 minute TTL
+})
+
+// Error statistics tracking
+const errorStats = {
+  metascraper: { count: 0, lastError: null },
+  unfluff: { count: 0, lastError: null },
+  network: { count: 0, lastError: null },
+  validation: { count: 0, lastError: null }
+}
 
 // Security configuration
 const MAX_CONTENT_SIZE = 5 * 1024 * 1024 // 5MB limit
@@ -346,6 +360,55 @@ function escapeHtml(unsafe) {
     .replace(/'/g, "&#039;")
 }
 
+// Extract domain from URL for logging
+function extractDomain(urlString) {
+  try {
+    const url = new URL(urlString)
+    return url.hostname
+  } catch {
+    return 'unknown'
+  }
+}
+
+// Deduplicated error logging with structured context
+function logDedupedError(logger, errorType, errorMessage, context = {}) {
+  const errorKey = `${errorType}:${context.domain || ''}:${errorMessage}`
+
+  // Check if we've logged this error recently
+  if (recentErrors.has(errorKey)) {
+    // Error already logged, increment suppressed count
+    const existing = recentErrors.get(errorKey)
+    existing.suppressedCount = (existing.suppressedCount || 0) + 1
+    recentErrors.set(errorKey, existing)
+    return false // Indicate error was suppressed
+  }
+
+  // Log the error with full context
+  const logData = {
+    errorType,
+    message: errorMessage,
+    ...context,
+    timestamp: new Date().toISOString()
+  }
+
+  if (logger && logger.warn) {
+    logger.warn(logData, `${errorType} error occurred`)
+  } else {
+    console.warn(`[${errorType}]`, errorMessage, context)
+  }
+
+  // Track this error
+  recentErrors.set(errorKey, { ...logData, suppressedCount: 0 })
+
+  // Update error statistics
+  if (errorStats[errorType]) {
+    errorStats[errorType].count++
+    errorStats[errorType].lastError = errorMessage
+  }
+
+  return true // Indicate error was logged
+}
+
 function mapURI (parsed, root, origin) {
   var mapped = root + '/' + origin + parsed.pathname
 
@@ -441,11 +504,42 @@ fastify.get('/favicon.ico', async (request, reply) => {
 
 // Health check endpoint
 fastify.get('/health', async (request, reply) => {
-  return { 
-    status: 'ok', 
+  const includeStats = request.query.stats === 'true'
+
+  const health = {
+    status: 'ok',
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   }
+
+  // Include error statistics if requested
+  if (includeStats) {
+    health.errorStats = {
+      metascraper: {
+        total: errorStats.metascraper.count,
+        lastError: errorStats.metascraper.lastError
+      },
+      unfluff: {
+        total: errorStats.unfluff.count,
+        lastError: errorStats.unfluff.lastError
+      },
+      network: {
+        total: errorStats.network.count,
+        lastError: errorStats.network.lastError
+      },
+      validation: {
+        total: errorStats.validation.count,
+        lastError: errorStats.validation.lastError
+      }
+    }
+    health.cache = {
+      size: cache.size,
+      max: 100,
+      recentErrorsTracked: recentErrors.size
+    }
+  }
+
+  return health
 })
 
 // MAIN
@@ -498,6 +592,15 @@ fastify.get('/', async (request, reply) => {
         validateSecureUrl(uri)
       } catch (securityError) {
         cleanup()
+
+        // Log validation errors with deduplication
+        logDedupedError(fastify.log, 'validation', securityError.message, {
+          url: uri,
+          domain: extractDomain(uri),
+          validationType: 'security',
+          reqId: request.id
+        })
+
         return reply.code(403).send({
           error: 'Security validation failed',
           message: securityError.message
@@ -641,7 +744,12 @@ fastify.get('/', async (request, reply) => {
         try {
           data = extractor(html.data)
         } catch (extractorErr) {
-          console.warn('Unfluff extractor failed, using basic extraction:', extractorErr.message)
+          logDedupedError(fastify.log, 'unfluff', extractorErr.message, {
+            url: uri,
+            domain: extractDomain(uri),
+            fallback: 'basic_extraction',
+            reqId: request.id
+          })
           data = {
             title: '',
             text: '',
@@ -658,7 +766,12 @@ fastify.get('/', async (request, reply) => {
           const metadata = await metascraper({ html: html.data, url: uri })
           data = { ...data, ...metadata }
         } catch (metascraperErr) {
-          console.warn('Metascraper failed, continuing with basic data:', metascraperErr.message)
+          logDedupedError(fastify.log, 'metascraper', metascraperErr.message, {
+            url: uri,
+            domain: extractDomain(uri),
+            fallback: 'basic_extraction',
+            reqId: request.id
+          })
         }
         data['@context'] = 'https://schema.org'
         
@@ -741,8 +854,15 @@ fastify.get('/', async (request, reply) => {
       }
     } catch (err) {
       cleanup()
-      console.error('Error processing request:', err.message)
-      
+
+      // Log network errors with deduplication
+      logDedupedError(fastify.log, 'network', err.message, {
+        url: uri,
+        domain: extractDomain(uri),
+        errorCode: err.code,
+        reqId: request.id
+      })
+
       // Handle different error types
       if (err.code === 'ENOTFOUND') {
         return reply.code(404).send({
@@ -760,7 +880,7 @@ fastify.get('/', async (request, reply) => {
           message: 'The request took too long to complete'
         })
       } else {
-        return reply.code(500).send({ 
+        return reply.code(500).send({
           error: 'Failed to process URL',
           message: 'Internal server error occurred'
         })
