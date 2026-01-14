@@ -825,19 +825,19 @@ fastify.get('/', async (request, reply) => {
         // fetch with timeout and security limits
         console.log('extracting', uri)
         var html = await axios.get(uri, {
-          headers: headers,
+          headers: {
+            'User-Agent': user_agent_desktop,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+          },
           timeout: 5000, // 5 second timeout (reduced from 10s)
           maxRedirects: 3, // Reduced redirects
           maxContentLength: MAX_CONTENT_SIZE,
           maxBodyLength: MAX_CONTENT_SIZE,
           validateStatus: (status) => status < 500, // Accept any status < 500
-          // Additional security headers
-          'User-Agent': user_agent_desktop,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
 
           // SECURITY FIX: Validate redirect destinations (prevents redirect bypass)
           beforeRedirect: (options, responseDetails) => {
