@@ -279,36 +279,41 @@ if __name__ == '__main__':
 
 ### Domain Allowlist
 
-For security, only whitelisted domains can be scraped. Configure in `data/allowed-domains.json`:
+For security, only whitelisted domains can be scraped. json.rocks includes **1000+ popular domains** by default, covering:
 
-```json
-{
-  "allowedDomains": [
-    "github.com",
-    "stackoverflow.com",
-    "youtube.com",
-    "twitter.com",
-    "reddit.com",
-    "medium.com"
-  ]
-}
-```
+- Social media (Twitter, Reddit, LinkedIn, etc.)
+- Development platforms (GitHub, GitLab, npm, etc.)
+- News sites (NYTimes, BBC, CNN, etc.)
+- Cloud providers (AWS, Azure, Vercel, Netlify, etc.)
+- Documentation sites (MDN, React, Node.js, etc.)
+- And many more...
 
-**Add your domains:**
-```json
-{
-  "allowedDomains": [
-    "yourdomain.com",
-    "blog.yourdomain.com",
-    "*.yourdomain.com"
-  ]
-}
-```
+**Default domains:** Loaded from `data/allowed-domains-top1000.json` (committed to git)
 
-Reload without restart:
-```bash
-curl -X POST http://localhost:9980/admin/reload-domains
-```
+#### Adding Custom Domains
+
+To add your own domains without modifying the default list:
+
+1. Create `data/allowed-domains-custom.json`:
+   ```json
+   [
+     "yourdomain.com",
+     "blog.yourdomain.com",
+     "mycompany.com"
+   ]
+   ```
+
+2. Restart the server - custom domains are automatically merged with defaults
+
+3. Or reload without restart:
+   ```bash
+   export ADMIN_PASS=your-password
+   curl -u admin:$ADMIN_PASS -X POST http://localhost:9980/admin/reload-domains
+   ```
+
+**Note:** Subdomains are automatically included (e.g., `github.com` allows `api.github.com`, `gist.github.com`)
+
+**Total domains:** Default (1000+) + Custom (your additions) = Automatically merged and deduplicated
 
 See [DOMAIN_MANAGEMENT.md](DOMAIN_MANAGEMENT.md) for detailed configuration guide.
 
