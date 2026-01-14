@@ -1,0 +1,178 @@
+# Kubernetes deployment manifest for json.rocks
+#
+# Usage:
+#   kubectl apply -f k8s/
+#
+# See: docs/PRODUCTION_DEPLOYMENT.md
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: json-rocks
+  labels:
+    app: json-rocks
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: json-rocks
+  template:
+    metadata:
+      labels:
+        app: json-rocks
+        version: v1
+    spec:
+      containers:
+      - name: json-rocks
+        image: json-rocks:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9980
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: ADMIN_USER
+          value: "admin"
+        - name: ADMIN_PASS
+          valueFrom:
+            secretKeyRef:
+              name: json-rocks-secrets
+              key: admin-password
+        - name: AUTH_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: json-rocks-config
+              key: auth-mode
+              optional: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9980
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9980
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: json-rocks-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: json-rocks
+  labels:
+    app: json-rocks
+spec:
+  type: LoadBalancer
+  selector:
+    app: json-rocks
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 9980
+    name: http
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: json-rocks-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: json-rocks-secrets
+type: Opaque
+stringData:
+  admin-password: your-secure-password-here  # CHANGE THIS!
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: json-rocks-config
+data:
+  auth-mode: "optional"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: json-rocks-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: json-rocks
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max

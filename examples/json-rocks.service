@@ -1,0 +1,68 @@
+# systemd service file for json.rocks
+#
+# This file should be placed in /etc/systemd/system/json-rocks.service
+#
+# Installation:
+#   sudo cp json-rocks.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable json-rocks
+#   sudo systemctl start json-rocks
+#
+# See: docs/PRODUCTION_DEPLOYMENT.md
+
+[Unit]
+Description=json.rocks - JSON metadata extraction service
+Documentation=https://github.com/spux/json.rocks
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jsonrocks
+Group=jsonrocks
+WorkingDirectory=/opt/json-rocks
+
+# Start command
+ExecStart=/usr/bin/node /opt/json-rocks/bin/server.js
+
+# Restart behavior
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/json-rocks/environment
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=json-rocks
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/json-rocks/data /opt/json-rocks/logs
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+
+# Resource limits
+LimitNOFILE=4096
+LimitNPROC=512
+MemoryMax=1G
+MemoryHigh=768M
+CPUQuota=80%
+
+# Process management
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
