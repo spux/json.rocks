@@ -5,7 +5,11 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha test/**/*.test.js --timeout 10000",
+    "test:watch": "mocha test/**/*.test.js --watch",
+    "test:coverage": "c8 mocha test/**/*.test.js --timeout 10000",
+    "test:security": "mocha test/security/*.test.js --timeout 10000",
+    "test:api": "mocha test/api/*.test.js --timeout 10000"
   },
   "repository": {
     "type": "git",
@@ -39,5 +43,10 @@
     "path": "^0.12.7",
     "scrapex": "^0.3.4",
     "unfluff": "^3.2.0"
+  },
+  "devDependencies": {
+    "c8": "^10.1.2",
+    "chai": "^5.1.2",
+    "mocha": "^10.8.2"
   }
 }
