@@ -178,6 +178,15 @@ function checkAuthentication(request) {
 function getRateLimitForRequest(request, isCached) {
   const auth = checkAuthentication(request)
 
+  // Check if request is from localhost
+  const ip = request.ip || request.raw.socket.remoteAddress
+  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+
+  // Localhost gets much higher rate limits for development/testing
+  if (isLocalhost) {
+    return isCached ? 10000 : 1000
+  }
+
   if (auth.authenticated && auth.keyConfig && auth.keyConfig.rateLimit) {
     // Use per-key rate limits
     return isCached ? auth.keyConfig.rateLimit.cached : auth.keyConfig.rateLimit.uncached
