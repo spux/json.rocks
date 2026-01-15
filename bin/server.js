@@ -192,8 +192,8 @@ function getRateLimitForRequest(request, isCached) {
     return isCached ? auth.keyConfig.rateLimit.cached : auth.keyConfig.rateLimit.uncached
   }
 
-  // Use default rate limits
-  return isCached ? 100 : 5
+  // Use default rate limits (increased for better usability with domain allowlist protection)
+  return isCached ? 300 : 30
 }
 
 // Load API keys on startup
@@ -1308,7 +1308,8 @@ fastify.listen(data.port, '0.0.0.0', (err, address) => {
   if (err) throw err
   fastify.log.info(`server listening on ${address}`)
   console.log('Security measures active:')
-  console.log('- Rate limiting: 5 requests/minute per IP (non-cached), 100 requests/minute (cached)')
+  console.log('- Rate limiting: 30 requests/minute per IP (non-cached), 300 requests/minute (cached)')
+  console.log('- Rate limiting (localhost): 1000 requests/minute (non-cached), 10000 requests/minute (cached)')
   console.log('- Domain allowlist:', ALLOWED_DOMAINS.length, 'domains loaded')
   console.log('- Private IP blocking enabled')
   console.log('- Content size limit:', MAX_CONTENT_SIZE / 1024 / 1024 + 'MB')
