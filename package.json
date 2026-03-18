@@ -2,6 +2,7 @@
   "name": "jsonrocks",
   "version": "0.0.67",
   "description": "turn any page into json",
+  "license": "AGPL-3.0-or-later",
   "main": "index.js",
   "type": "module",
   "scripts": {
