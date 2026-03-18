@@ -1,322 +1,203 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" href="/favicon.ico" />
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-        font-family: Arial, Helvetica, sans-serif;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>json.rocks</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    * { margin: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; color: #1a1a2e; }
+    #losos { max-width: 100% !important; }
+    #losos > div { max-width: 100% !important; width: 100% !important; }
+    button.pane-tab { color: #888 !important; font-weight: 500 !important; }
+    button.pane-tab[aria-selected="true"] { color: #667eea !important; font-weight: 600 !important; }
 
-      .search-icon {
-        content: url('data:image/svg+xml;charset=UTF-8,<svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"></path></svg>');
-      }
+    .jr-search-page {
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 20px;
+    }
+    .jr-logo { font-size: 48px; font-weight: 300; color: #fff; margin-bottom: 8px; letter-spacing: -1px; }
+    .jr-logo strong { font-weight: 700; }
+    .jr-tagline { color: rgba(255,255,255,0.7); font-size: 16px; margin-bottom: 32px; }
+    .jr-search-form { display: flex; gap: 0; width: 100%; max-width: 580px; }
+    .jr-search-input {
+      flex: 1; padding: 14px 20px; border: none; border-radius: 28px 0 0 28px;
+      font: 400 16px/1 inherit; color: #1a1a2e; outline: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .jr-search-input::placeholder { color: #aaa; }
+    .jr-search-btn {
+      background: #ff6b6b; color: #fff; border: none; border-radius: 0 28px 28px 0;
+      padding: 14px 28px; font: 600 16px/1 inherit; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .jr-search-btn:hover { background: #ee5a24; }
+    .jr-loading { color: rgba(255,255,255,0.8); margin-top: 20px; font-size: 14px; }
+    .jr-error { color: #ff6b6b; background: rgba(255,255,255,0.1); padding: 12px 20px; border-radius: 8px; margin-top: 16px; font-size: 14px; }
+  </style>
+</head>
+<body>
 
-      /*Navbar*/
+<script id="data" type="application/ld+json"></script>
 
-      .navbar {
-        height: 5vh;
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.81rem;
-        padding: 10px 10px 10px 20px;
-      }
+<!-- PANES -->
 
-      .about-menu,
-      .store-menu,
-      .images-menu,
-      .menu-svg,
-      .notifications-svg {
-        margin-right: 20px;
-        text-decoration: none;
-        color: black;
-      }
+<div id="losos"></div>
 
-      .about-menu:hover,
-      .store-menu:hover,
-      .images-menu:hover {
-        text-decoration: underline;
-        color: black;
-      }
+<script>
+(function() {
+  var dataEl = document.getElementById('data')
+  var lososEl = document.getElementById('losos')
+  var params = new URLSearchParams(location.search)
+  var uri = params.get('uri')
 
-      .sign-in {
-        background-color: blue;
-        color: white;
-        height: 30px;
-        width: 70px;
-        border: none;
-        font-weight: bold;
-        border-radius: 3px;
-      }
+  var context = {
+    "schema": "http://schema.org/",
+    "dct": "http://purl.org/dc/terms/",
+    "title": "schema:name",
+    "description": "schema:description",
+    "image": "schema:image",
+    "logo": "schema:logo",
+    "author": "schema:author",
+    "publisher": "schema:publisher",
+    "date": "dct:created",
+    "url": "schema:url",
+    "lang": "schema:inLanguage",
+    "text": "schema:text",
+    "link": "schema:relatedLink",
+    "linkText": "schema:name",
+    "linkHref": "schema:url",
+    "img": "schema:associatedMedia",
+    "imgSrc": "schema:contentUrl",
+    "imgAlt": "schema:description",
+    "video": "schema:video",
+    "videoUrl": "schema:contentUrl",
+    "WebPage": "schema:WebPage",
+    "Link": "schema:WebPage",
+    "Image": "schema:ImageObject",
+    "Video": "schema:VideoObject"
+  }
 
-      .right-side-top-menu {
-        display: flex;
-        align-items: center;
-        margin-right: 20px;
-      }
+  function transformToJsonLd(scraped) {
+    var links = (scraped.links || []).slice(0, 30).map(function(l, i) {
+      var href = l.href || ''
+      if (href && href.startsWith('/')) try { href = new URL(href, uri).href } catch(e) {}
+      return { "@id": "#link" + i, "@type": "Link", "linkText": l.text || '', "linkHref": href }
+    })
 
-      /*Main Content*/
+    var images = (scraped.images || []).slice(0, 30).map(function(img, i) {
+      var src = img.src || img.href || ''
+      if (src && src.startsWith('/')) try { src = new URL(src, uri).href } catch(e) {}
+      return { "@id": "#img" + i, "@type": "Image", "imgSrc": src, "imgAlt": img.alt || '' }
+    })
 
-      .main-content {
-        height: 79vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
-      }
+    var videos = (scraped.videos || []).map(function(v, i) {
+      return { "@id": "#vid" + i, "@type": "Video", "videoUrl": v.url || v.href || '' }
+    })
 
-      .logo {
-        margin-bottom: 20px;
-        font-weight: bold;
-        color: blue;
-      }
+    var authorStr = Array.isArray(scraped.author) ? scraped.author.join(', ') : (scraped.author || '')
 
-      #search {
-        width: 582px;
-        height: 50px;
-        border-radius: 30px;
-        border: 1px solid #e4e4e4;
-        outline: none;
-        padding-right: 80px;
-        padding-left: 30px;
-        box-sizing: border-box;
-        text-indent: 25px;
-      }
+    return {
+      "@context": context,
+      "@id": "#this",
+      "@type": "WebPage",
+      "title": scraped.title || 'Untitled',
+      "description": scraped.description || '',
+      "image": scraped.image || '',
+      "logo": scraped.logo || '',
+      "author": authorStr,
+      "publisher": scraped.publisher || '',
+      "date": scraped.date || '',
+      "url": scraped.canonicalLink || scraped.url || uri,
+      "lang": scraped.lang || '',
+      "text": scraped.text ? scraped.text.slice(0, 2000) : '',
+      "link": links,
+      "img": images,
+      "video": videos
+    }
+  }
 
-      #search:hover {
-        box-shadow: 0 1px 6px 0 rgba(32, 33, 36, 0.28);
-        border-color: rgba(223, 225, 229, 0);
-      }
+  function bootShell() {
+    var s = document.createElement('script')
+    s.type = 'module'
+    s.src = 'https://losos.org/losos/shell.js'
+    document.body.appendChild(s)
+  }
 
-      .btn-container {
-        margin-top: 30px;
-      }
+  function showSearch(errorMsg) {
+    lososEl.innerHTML = ''
+    var div = document.createElement('div')
+    div.className = 'jr-search-page'
+    div.innerHTML = '<div class="jr-logo"><strong>json</strong>.rocks</div>'
+      + '<div class="jr-tagline">Turn any URL into structured data</div>'
+      + '<form class="jr-search-form" action="">'
+      + '<input class="jr-search-input" type="text" name="uri" placeholder="Paste a URL or search..." autofocus />'
+      + '<button class="jr-search-btn" type="submit">Go</button>'
+      + '</form>'
+      + (errorMsg ? '<div class="jr-error">' + errorMsg + '</div>' : '')
+      + '<div style="margin-top: 32px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">'
+      + '<a href="?uri=https://github.com/nicehash" style="padding: 6px 14px; background: rgba(255,255,255,0.15); border-radius: 20px; color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px;">GitHub</a>'
+      + '<a href="?uri=https://news.ycombinator.com" style="padding: 6px 14px; background: rgba(255,255,255,0.15); border-radius: 20px; color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px;">Hacker News</a>'
+      + '<a href="?uri=https://mempool.space" style="padding: 6px 14px; background: rgba(255,255,255,0.15); border-radius: 20px; color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px;">Bitcoin</a>'
+      + '<a href="?uri=https://www.reddit.com/r/bitcoin" style="padding: 6px 14px; background: rgba(255,255,255,0.15); border-radius: 20px; color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px;">Reddit</a>'
+      + '</div>'
+    lososEl.appendChild(div)
+  }
 
-      .json-search,
-      .lucky-btn {
-        background-image: -webkit-linear-gradient(top, #f5f5f5, #f1f1f1);
-        background-color: #f2f2f2;
-        border: 1px solid #f2f2f2;
-        border-radius: 3px;
-        color: #5f6368;
-        font-family: arial, sans-serif;
-        font-size: 0.875rem;
-        margin: 11px 4px;
-        padding: 0 16px;
-        line-height: 27px;
-        height: 36px;
-        min-width: 54px;
-        text-align: center;
-        cursor: pointer;
-        user-select: none;
-      }
+  if (!uri) {
+    showSearch()
+    return
+  }
 
-      .json-search:hover,
-      .lucky-btn:hover {
-        cursor: pointer;
-        box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
-        background-image: -webkit-linear-gradient(top, #f8f8f8, #f1f1f1);
-        background-color: #f8f8f8;
-        border: 1px solid #c6c6c6;
-        color: #222;
-      }
+  // Sites with their own panes — bypass json.rocks scraping, create stub JSON-LD
+  function bootDirect(url) {
+    var jsonLd = {
+      "@context": context,
+      "@id": "#this",
+      "@type": "WebPage",
+      "url": url,
+      "title": url
+    }
+    window.__jrData = jsonLd
+    dataEl.textContent = JSON.stringify(jsonLd)
+    lososEl.textContent = ''
+    bootShell()
+  }
 
-      .mic-json {
-        position: absolute;
-        float: right;
-        margin-top: 12px;
-        margin-left: 250px;
-        cursor: pointer;
-        border: 0;
-        background: transparent;
-        outline: none;
-        width: 24px;
-      }
+  var directDomains = "DIRECT_DOMAINS"
+  var isDirectPane = directDomains.some(function(d) { return uri.indexOf(d) !== -1 })
+  if (isDirectPane) {
+    bootDirect(uri)
+    return
+  }
 
-      .keyboard {
-        position: absolute;
-        float: right;
-        margin-top: 18px;
-        margin-left: 220px;
-        cursor: pointer;
-        border: 0;
-        background: transparent;
-        outline: none;
-        width: 20px;
-      }
+  // Show loading
+  lososEl.innerHTML = '<div class="jr-search-page">'
+    + '<div class="jr-logo"><strong>json</strong>.rocks</div>'
+    + '<div class="jr-loading">Fetching ' + uri + '...</div>'
+    + '</div>'
 
-      .search-icon-wrapper {
-        position: absolute;
-        margin-top: 17px;
-        margin-left: 20px;
-        border: 0;
-        outline: none;
-        width: 20px;
-        color: #9aa0a6;
-      }
-      
-      .search-icon-wrapper:before {
-        content: "🔍";
-        font-size: 16px;
-      }
-
-      .language {
-        color: #222222;
-        font-size: 0.81rem;
-        line-height: 35px;
-      }
-
-      .link-language {
-        text-decoration: none;
-        color: black;
-      }
-
-      .link-language:hover {
-        text-decoration: underline;
-      }
-
-      /*Footer*/
-
-      .country {
-        display: flex;
-        height: 3.5vh;
-        background-color: #f2f2f2;
-        align-items: center;
-        border-top: 1px solid #e4e4e4;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        padding-left: 20px;
-        text-decoration: none;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 0.87rem;
-        color: #5f6368;
-      }
-
-      .footer-bar {
-        height: 58.8px;
-        flex: 1;
-        background-color: #f2f2f2;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-top: 1px solid #e4e4e4;
-        padding-top: 10px;
-        padding-bottom: 10px;
-      }
-
-      .left-side-footer-bar,
-      .right-side-footer-bar {
-        margin-left: 20px;
-        margin-right: 20px;
-      }
-
-      .footer-links {
-        text-decoration: none;
-        margin-right: 20px;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 0.87rem;
-        color: #5f6368;
-      }
-
-      .footer-links:hover {
-        text-decoration: underline;
-      }
-
-      /*Small Sevices*/
-
-      @media (max-width: 375px) {
-        #search {
-          width: 320px;
-        }
-
-        .footer-bar {
-          display: flex;
-          flex-wrap: wrap;
-          justify-content: center;
-          align-items: center;
-        }
-
-        .navbar {
-          display: flex;
-          flex-direction: row;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 0.81rem;
-          padding: 10px 10px 10px 20px;
-        }
-
-        .store-menu,
-        .menu-svg {
-          display: none;
-        }
-      }
-    </style>
-
-    <title>JSON Rocks</title>
-  </head>
-  <body>
-    <!--Search Navbar-->
-    <nav class="navbar">
-      <div class="left-side-top-menu">
-        <a class="about-menu" href="#"></a>
-      </div>
-      <div class="right-side-top-menu">
-        <a class="images-menu" href="#">Images</a>
-        <button class="sign-in">Sign In</button>
-      </div>
-    </nav>
-    <!--Search Main-->
-    <main class="main-content">
-      <p>
-        <img
-          width="600"
-          src="images/logo.svg"
-          alt="JSON Rocks"
-        />
-      </p>
-      <a href="#"
-        ><img
-          class="keyboard"
-          src="images/keyboard.png"
-          alt=""
-      /></a>
-      <a href="#"
-        ><img
-          class="mic-json"
-          src="images/googlemic_color_24dp.png"
-          alt=""
-      /></a>
-
-      <form name="q" action="/">
-        <div class="search-bar">
-          <span class="search-icon-wrapper"></span>
-
-          <input
-            type="text"
-            id="search"
-            name="uri"
-            placeholder="Search or type a URI"
-            autofocus
-          />
-        </div>
-      </form>
-
-      <div class="btn-container">
-        <button onClick="javascript:document.q.submit()" class="json-search">
-          Search
-        </button>
-        <button onClick="javascript:document.q.submit()" class="lucky-btn">
-          I´m Feeling Lucky
-        </button>
-      </div>
-    </main>
-  </body>
+  // Fetch from own API endpoint
+  fetch('/api?uri=' + encodeURIComponent(uri))
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(err) { throw new Error(err.message || err.error || 'Request failed') })
+      return r.json()
+    })
+    .then(function(scraped) {
+      var jsonLd = transformToJsonLd(scraped)
+      window.__jrData = jsonLd
+      dataEl.textContent = JSON.stringify(jsonLd)
+      lososEl.textContent = ''
+      bootShell()
+    })
+    .catch(function(err) {
+      console.warn('Fetch failed:', err)
+      showSearch(err.message || 'Failed to fetch. Try another URL.')
+    })
+})()
+</script>
+</body>
 </html>

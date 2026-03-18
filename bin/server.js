@@ -538,6 +538,34 @@ fastify.get('/js/:filename', async (request, reply) => {
   }
 })
 
+// Serve losos pane files
+fastify.get('/panes/:filename', async (request, reply) => {
+  const filename = request.params.filename
+
+  // Security: only allow safe filenames
+  if (!/^[a-zA-Z0-9_\-\.]+\.js$/.test(filename)) {
+    return reply.code(404).send({ error: 'File not found' })
+  }
+
+  try {
+    const filePath = path.join(__dirname, '../panes', filename)
+
+    if (!await fs.pathExists(filePath)) {
+      return reply.code(404).send({ error: 'File not found' })
+    }
+
+    const fileContent = await fs.readFile(filePath, 'utf8')
+
+    reply
+      .code(200)
+      .header('Content-Type', 'application/javascript')
+      .header('Cache-Control', 'public, max-age=86400')
+      .send(fileContent)
+  } catch (err) {
+    reply.code(404).send({ error: 'File not found' })
+  }
+})
+
 // Serve static image files
 fastify.get('/images/:filename', async (request, reply) => {
   const filename = request.params.filename
@@ -641,10 +669,9 @@ fastify.get('/health', async (request, reply) => {
   return health
 })
 
-// MAIN
-fastify.get('/', async (request, reply) => {
+// JSON API endpoint — returns scraped data as JSON
+fastify.get('/api', async (request, reply) => {
   var uri = request.query.uri
-  var filter = request.query.filter
   var refresh = request.query.refresh
 
   // Check authentication if required
@@ -664,6 +691,10 @@ fastify.get('/', async (request, reply) => {
     })
   }
 
+  if (!uri) {
+    return reply.code(400).send({ error: 'Missing uri parameter' })
+  }
+
   // Update usage stats if authenticated
   if (auth.authenticated && auth.keyConfig) {
     const stats = keyUsageStats.get(auth.key)
@@ -680,7 +711,7 @@ fastify.get('/', async (request, reply) => {
   // Check concurrent request limit
   const clientIP = request.ip
   const activeCount = activeRequests.get(clientIP) || 0
-  
+
   if (activeCount >= MAX_CONCURRENT_REQUESTS) {
     return reply.code(429).send({
       error: 'Too many concurrent requests',
@@ -688,11 +719,10 @@ fastify.get('/', async (request, reply) => {
       activeRequests: activeCount
     })
   }
-  
+
   // Track active request
   activeRequests.set(clientIP, activeCount + 1)
-  
-  // Cleanup function
+
   const cleanup = () => {
     const current = activeRequests.get(clientIP) || 0
     if (current <= 1) {
@@ -701,138 +731,74 @@ fastify.get('/', async (request, reply) => {
       activeRequests.set(clientIP, current - 1)
     }
   }
-  
-  try {
 
-  // process uri
-  if (uri) {
-    // Validate URI for non-text searches
+  try {
+    // Validate URI
     if (!uri.match(/^[a-zA-Z ]*$/)) {
       if (!/^https?:\/\/.+/.test(uri)) {
-        cleanup()
-        return reply.code(400).send({ 
+        return reply.code(400).send({
           error: 'Invalid URI',
           message: 'URI must be a valid HTTP or HTTPS URL'
         })
       }
-      
-      // Security validation for URLs
+
       try {
         validateSecureUrl(uri)
       } catch (securityError) {
-        cleanup()
-
-        // Log validation errors with deduplication
         logDedupedError(fastify.log, 'validation', securityError.message, {
           url: uri,
           domain: extractDomain(uri),
           validationType: 'security',
           reqId: request.id
         })
-
         return reply.code(403).send({
           error: 'Security validation failed',
           message: securityError.message
         })
       }
     }
-    
-    if (uri.match(/^[a-zA-Z ]*$/)) {
-      console.log('text search')
 
+    // Text search
+    if (uri.match(/^[a-zA-Z ]*$/)) {
       var mapped = mapURI({ pathname: uri }, root, 'q/')
+      var apiData
       try {
         if (fs.existsSync(mapped) && !refresh) {
-          data = JSON.parse(await fs.readFile(mapped, 'utf8'))
+          apiData = JSON.parse(await fs.readFile(mapped, 'utf8'))
         } else {
-          console.log(
-            'extracting',
-            searx + `/?q=${uri}&categories=general&language=en-US&format=json`
-          )
           var html = await axios.get(
             searx + `/?q=${uri}&categories=general&language=en-US&format=json`,
             { headers: headers }
           )
-          var data = html.data
+          apiData = html.data
+          await fs.outputFile(mapped, JSON.stringify(apiData, null, 2))
         }
-        console.log('mapped', mapped)
-        await fs.outputFile(mapped, JSON.stringify(data, null, 2))
       } catch (err) {
         console.error(err)
+        return reply.code(500).send({ error: 'Search failed' })
       }
-
-      reply.code(200)
-        .header('Content-Type', 'text/html; charset=UTF-8')
-        .header('Cache-Control', 'public, max-age=3600')
-
-      if (fullhtml) {
-        var armor = `<!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta charset="utf-8">
-
-        <title>${escapeHtml(data.title)}</title>
-        <meta property="og:title" content="${escapeHtml(data.title)}" />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="${escapeHtml(data.canonicalLink)}" />
-        <meta property="og:image" content="${escapeHtml(data.image)}" />
-        <meta property="og:description" content="${escapeHtml(data.description)}" />
-
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-        <script type="application/ld+json" id="data">
-        ${JSON.stringify(data, null, 2)}
-      </script>
-      <script src="/js/json-renderer.js"></script>
-      </head>
-      <body></body>
-      </html>
-      `
-      } else {
-        var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-        <script type="application/ld+json" id="data">
-        ${JSON.stringify(data, null, 2)}
-      </script>
-      <script src="/js/json-renderer.js"></script>`
-      }
-
-      // console.log('armor', armor)
-
-      reply.send(armor)
-
-      return
+      return reply.code(200).header('Content-Type', 'application/json').send(apiData)
     }
 
+    // URL scraping
     if (!uri.match(/^http/)) {
       uri = 'https://' + uri
     }
 
-    // parse URI
     var parsed = url.parse(uri)
     var origin = parsed.hostname
-    console.log('uri', uri)
-    console.log('parsed', parsed)
-    console.log('refresh', refresh)
-
     var mapped = mapURI(parsed, root, origin)
+    var apiData
 
     try {
-      // Check memory cache first
       if (cache.has(uri) && !refresh) {
-        console.log('Cache hit for', uri)
-        data = cache.get(uri)
+        apiData = cache.get(uri)
       } else if (fs.existsSync(mapped) && !refresh) {
-        // File cache fallback
-        console.log('getting', mapped)
-        data = JSON.parse(await fs.readFile(mapped, 'utf8'))
-        cache.set(uri, data) // Add to memory cache
+        apiData = JSON.parse(await fs.readFile(mapped, 'utf8'))
+        cache.set(uri, apiData)
       } else {
-        // SECURITY FIX: Validate DNS before making request (prevents DNS rebinding)
         await validateUrlWithDNS(uri)
 
-        // fetch with timeout and security limits
-        console.log('extracting', uri)
         var html = await axios.get(uri, {
           headers: {
             'User-Agent': user_agent_desktop,
@@ -842,251 +808,170 @@ fastify.get('/', async (request, reply) => {
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
           },
-          timeout: 5000, // 5 second timeout (reduced from 10s)
-          maxRedirects: 3, // Reduced redirects
+          timeout: 5000,
+          maxRedirects: 3,
           maxContentLength: MAX_CONTENT_SIZE,
           maxBodyLength: MAX_CONTENT_SIZE,
-          validateStatus: (status) => status < 500, // Accept any status < 500
-
-          // SECURITY FIX: Validate redirect destinations (prevents redirect bypass)
+          validateStatus: (status) => status < 500,
           beforeRedirect: (options, responseDetails) => {
             const redirectUrl = options.href
-
-            console.log('Following redirect to:', redirectUrl)
-
-            // Validate redirect protocol
             if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
               throw new Error(`Invalid redirect protocol: ${redirectUrl}`)
             }
-
-            // Check if redirect destination is blocked
             if (isBlockedIP(redirectUrl)) {
               throw new Error(`Redirect to blocked IP address: ${redirectUrl}`)
             }
-
-            // Note: We allow redirects to domains outside allowlist for flexibility
-            // but they must still pass IP blocking checks
           }
         })
 
-        // // extract with error handling
         try {
-          data = extractor(html.data)
+          apiData = extractor(html.data)
         } catch (extractorErr) {
           logDedupedError(fastify.log, 'unfluff', extractorErr.message, {
-            url: uri,
-            domain: extractDomain(uri),
-            fallback: 'basic_extraction',
-            reqId: request.id
+            url: uri, domain: extractDomain(uri), fallback: 'basic_extraction', reqId: request.id
           })
-          data = {
-            title: '',
-            text: '',
-            url: uri,
-            image: '',
-            description: ''
-          }
+          apiData = { title: '', text: '', url: uri, image: '', description: '' }
         }
-        // var data = await scrapex(uri)
-        // console.log('DATA', data)
 
-        // console.log('CHEER', JSON.stringify($('a').serializeArray(), null, 2))
         try {
           const metadata = await metascraper({ html: html.data, url: uri })
-          data = { ...data, ...metadata }
+          apiData = { ...apiData, ...metadata }
         } catch (metascraperErr) {
           logDedupedError(fastify.log, 'metascraper', metascraperErr.message, {
-            url: uri,
-            domain: extractDomain(uri),
-            fallback: 'basic_extraction',
-            reqId: request.id
+            url: uri, domain: extractDomain(uri), fallback: 'basic_extraction', reqId: request.id
           })
         }
-        data['@context'] = 'https://schema.org'
-        
-        // Initialize arrays if they don't exist
-        if (!data.videos) data.videos = []
-        if (!data.links) data.links = []
+
+        apiData['@context'] = 'https://schema.org'
+        if (!apiData.videos) apiData.videos = []
+        if (!apiData.links) apiData.links = []
 
         const $ = cheerio.load(html.data)
 
-        var ch = $('video') //jquery get all videos
-
-        $(ch).each(function (i, link) {
-          console.log('############### VIDEO', link)
-          var l = {
-            text: $(link).text() || 'video',
-            href: $(link).attr('src')
-          }
-          // console.log('CHEER', l)
-          data.videos.push(l)
+        $('video').each(function (i, link) {
+          apiData.videos.push({ text: $(link).text() || 'video', href: $(link).attr('src') })
+        })
+        $('iframe').each(function (i, link) {
+          apiData.links.push({ text: $(link).text() || 'iframe', href: $(link).attr('src') })
+        })
+        $('a').each(function (i, link) {
+          apiData.links.push({ text: $(link).text(), href: $(link).attr('href') })
         })
 
-        var ch = $('iframe') //jquery get all iframes
-
-        $(ch).each(function (i, link) {
-          // console.log('###############', link)
-          var l = {
-            text: $(link).text() || 'iframe',
-            href: $(link).attr('src')
-          }
-          // console.log('CHEER', l)
-          data.links.push(l)
+        if (!apiData.images) apiData.images = []
+        $('img').each(function (i, img) {
+          var imgData = { src: $(img).attr('src'), alt: $(img).attr('alt') || '', title: $(img).attr('title') || '' }
+          if (imgData.src) apiData.images.push(imgData)
         })
 
-        var ch = $('a') //jquery get all hyperlinks
-        $(ch).each(function (i, link) {
-          var l = {
-            text: $(link).text(),
-            href: $(link).attr('href')
-          }
-          // console.log('CHEER', l)
-          data.links.push(l)
-        })
-
-        // Extract image sources from <img> tags
-        if (!data.images) data.images = []
-        var imgTags = $('img')
-        $(imgTags).each(function (i, img) {
-          var imgData = {
-            src: $(img).attr('src'),
-            alt: $(img).attr('alt') || '',
-            title: $(img).attr('title') || ''
-          }
-          if (imgData.src) {
-            data.images.push(imgData)
-          }
-        })
-
-        // for (var i = 0; i < data.links.length; i++) {
-        //   if (data.links[i].href.match(/^http/)) {
-        //     data.links[i].link = 'https://json.rocks/?uri=' + data.links[i].href
-        //   } else if (data.links[i].href.match(/^\//)) {
-        //     data.links[i].link =
-        //       'https://json.rocks/?uri=' +
-        //       parsed.protocol +
-        //       '//' +
-        //       origin +
-        //       data.links[i].href
-        //   }
-        // }
-
-        // Add to memory cache
-        cache.set(uri, data)
-        
-        // File cache (async, non-blocking)
+        cache.set(uri, apiData)
         var file = mapURI(parsed, root, origin)
-        console.log('file', file)
-        fs.outputFile(file, JSON.stringify(data, null, 2)).catch(err => {
+        fs.outputFile(file, JSON.stringify(apiData, null, 2)).catch(err => {
           console.error('Failed to write cache file:', err)
         })
       }
     } catch (err) {
-      cleanup()
-
-      // Log network errors with deduplication
       logDedupedError(fastify.log, 'network', err.message, {
-        url: uri,
-        domain: extractDomain(uri),
-        errorCode: err.code,
-        reqId: request.id
+        url: uri, domain: extractDomain(uri), errorCode: err.code, reqId: request.id
       })
-
-      // Handle different error types
       if (err.code === 'ENOTFOUND') {
-        return reply.code(404).send({
-          error: 'URL not found',
-          message: 'The requested URL could not be resolved'
-        })
+        return reply.code(404).send({ error: 'URL not found', message: 'The requested URL could not be resolved' })
       } else if (err.code === 'ECONNREFUSED') {
-        return reply.code(503).send({
-          error: 'Connection refused',
-          message: 'Could not connect to the target server'
-        })
+        return reply.code(503).send({ error: 'Connection refused', message: 'Could not connect to the target server' })
       } else if (err.code === 'ETIMEDOUT') {
-        return reply.code(408).send({
-          error: 'Request timeout',
-          message: 'The request took too long to complete'
-        })
+        return reply.code(408).send({ error: 'Request timeout', message: 'The request took too long to complete' })
       } else {
-        return reply.code(500).send({
-          error: 'Failed to process URL',
-          message: 'Internal server error occurred'
-        })
+        return reply.code(500).send({ error: 'Failed to process URL', message: 'Internal server error occurred' })
       }
     }
 
-    // response
-    reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
-
-    if (fullhtml) {
-      var armor = `<!DOCTYPE html>
-      <html lang="en">
-      <head>
-      <meta charset="utf-8">
-
-      <title>${escapeHtml(data.title)}</title>
-      <meta property="og:title" content="${escapeHtml(data.title)}" />
-      <meta property="og:type" content="website" />
-      <meta property="og:url" content="${escapeHtml(data.canonicalLink)}" />
-      <meta property="og:image" content="${escapeHtml(data.image)}" />
-      <meta property="og:description" content="${escapeHtml(data.description)}" />
-      
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-      <script type="application/ld+json" id="data">
-      ${JSON.stringify(data, null, 2)}
-    </script>
-    <script src="/js/json-renderer.js"></script>
-    </head>
-    <body></body>
-    </html>
-    `
-    } else {
-      console.log('filter', filter)
-      if (filter === 'links') {
-        data = data.links
-      }
-      if (filter === 'image') {
-        // Combine image links and actual images
-        const imageLinks = data.links?.filter(obj => {
-          const href = obj?.href?.toLowerCase()
-          return href && (
-            href.endsWith('.jpg') || href.endsWith('.jpeg') || 
-            href.endsWith('.png') || href.endsWith('.gif') || 
-            href.endsWith('.webp') || href.endsWith('.svg') || 
-            href.endsWith('.bmp') || href.endsWith('.ico')
-          )
-        }) || []
-        
-        const imageElements = data.images || []
-        
-        data = [...imageLinks, ...imageElements]
-      }
-      var armor = `<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-core.min.js"></script>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.21.0/components/prism-json.min.js"></script>
-      <script type="application/ld+json" id="data">
-      ${JSON.stringify(data, null, 2)}
-    </script>
-    <script src="/js/json-renderer.js"></script>`
+    // Apply filters if requested
+    var filter = request.query.filter
+    if (filter === 'links') {
+      apiData = apiData.links
+    } else if (filter === 'image') {
+      const imageLinks = apiData.links?.filter(obj => {
+        const href = obj?.href?.toLowerCase()
+        return href && (href.endsWith('.jpg') || href.endsWith('.jpeg') || href.endsWith('.png') || href.endsWith('.gif') || href.endsWith('.webp') || href.endsWith('.svg') || href.endsWith('.bmp') || href.endsWith('.ico'))
+      }) || []
+      const imageElements = apiData.images || []
+      apiData = [...imageLinks, ...imageElements]
     }
 
-    // console.log('armor', armor)
-
-    reply.send(armor)
-  } else {
-    var index = fs.readFileSync('./index.html')
-    reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
-
-    return index
-  }
+    return reply.code(200).header('Content-Type', 'application/json').send(apiData)
   } finally {
-    // Always cleanup active requests
-    if (uri) {
-      cleanup()
-    }
+    cleanup()
   }
 })
+
+// Scan panes directory — extract script tags, CSP needs, and direct-pane domains
+function scanPanes() {
+  const panesDir = path.join(__dirname, '../panes')
+  const result = {
+    scriptTags: '',
+    connectSrc: new Set(),
+    scriptSrc: new Set(),
+    directDomains: []
+  }
+
+  try {
+    const files = fs.readdirSync(panesDir)
+      .filter(f => f.endsWith('-pane.js'))
+      .sort()
+
+    result.scriptTags = files.map(f => `<script type="module" data-pane src="/panes/${f}"></script>`).join('\n')
+
+    // Parse annotations from each pane file
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(panesDir, file), 'utf8')
+      const lines = content.split('\n')
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        // Stop parsing at first non-comment line
+        if (!trimmed.startsWith('//')) break
+
+        const connectMatch = trimmed.match(/^\/\/\s*@connect\s+(.+)/)
+        if (connectMatch) result.connectSrc.add('https://' + connectMatch[1].trim())
+
+        const scriptMatch = trimmed.match(/^\/\/\s*@script\s+(.+)/)
+        if (scriptMatch) result.scriptSrc.add('https://' + scriptMatch[1].trim())
+
+        const directMatch = trimmed.match(/^\/\/\s*@direct\s+(.+)/)
+        if (directMatch) result.directDomains.push(directMatch[1].trim())
+      }
+    }
+  } catch (err) {
+    console.warn('Could not read panes directory:', err.message)
+  }
+
+  return result
+}
+
+// Build CSP header from base policy + pane annotations
+function buildCSP(paneData) {
+  const scriptSrc = ["'self'", "'unsafe-inline'", 'https://losos.org', 'https://cdnjs.cloudflare.com', ...paneData.scriptSrc].join(' ')
+  const connectSrc = ["'self'", 'https://www.google.com', ...paneData.connectSrc].join(' ')
+  return `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; img-src 'self' https: data:; font-src 'self'`
+}
+
+// MAIN — serves the losos-powered SPA with dynamically discovered panes
+fastify.get('/', async (request, reply) => {
+  var index = fs.readFileSync('./index.html', 'utf8')
+  var paneData = scanPanes()
+
+  // Inject discovered panes and direct-pane domains
+  index = index.replace('<!-- PANES -->', paneData.scriptTags)
+  index = index.replace('"DIRECT_DOMAINS"', JSON.stringify(paneData.directDomains))
+
+  reply.code(200).header('Content-Type', 'text/html; charset=UTF-8')
+  return index
+})
+
+// Build CSP once at startup from pane annotations
+const _startupPaneData = scanPanes()
+const _cspHeader = buildCSP(_startupPaneData)
+console.log('CSP built from pane annotations:', _cspHeader)
 
 // Add security headers middleware
 fastify.addHook('onSend', async (request, reply, payload) => {
@@ -1094,7 +979,7 @@ fastify.addHook('onSend', async (request, reply, payload) => {
   reply.header('X-Frame-Options', 'DENY')
   reply.header('X-XSS-Protection', '1; mode=block')
   reply.header('Referrer-Policy', 'strict-origin-when-cross-origin')
-  reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'")
+  reply.header('Content-Security-Policy', _cspHeader)
   return payload
 })
 

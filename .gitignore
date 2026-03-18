@@ -119,3 +119,8 @@ dist
 
 # ssl certificates
 *.pem
+
+# Panes - track defaults, operator can add untracked panes
+panes/*
+!panes/article-pane.js
+!panes/source-pane.js
