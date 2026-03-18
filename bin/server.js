@@ -515,29 +515,6 @@ function mapURI (parsed, root, origin) {
   return mapped
 }
 
-// Serve static JS files
-fastify.get('/js/:filename', async (request, reply) => {
-  const filename = request.params.filename
-  const allowedFiles = ['json-renderer.js']
-
-  if (!allowedFiles.includes(filename)) {
-    return reply.code(404).send({ error: 'File not found' })
-  }
-
-  try {
-    const filePath = path.join(__dirname, '../js', filename)
-    const fileContent = await fs.readFile(filePath, 'utf8')
-
-    reply
-      .code(200)
-      .header('Content-Type', 'application/javascript')
-      .header('Cache-Control', 'public, max-age=86400') // 24 hour cache
-      .send(fileContent)
-  } catch (err) {
-    reply.code(404).send({ error: 'File not found' })
-  }
-})
-
 // Serve losos pane files
 fastify.get('/panes/:filename', async (request, reply) => {
   const filename = request.params.filename
