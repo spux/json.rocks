@@ -372,7 +372,8 @@ globalThis.data = {
   cert: './fullchain.pem',
   scheme: 'http',
   searx: 'https://search.inetol.net/',
-  filter: null
+  filter: null,
+  cacheMaxAge: 300
 }
 
 // INIT
@@ -381,6 +382,7 @@ data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
 data.filter = argv.filter || data.filter
+data.cacheMaxAge = parseInt(argv['cache-max-age'] || argv.cacheMaxAge) || data.cacheMaxAge
 var searx = argv.searx || data.searx
 var root = './data'
 
@@ -568,7 +570,7 @@ fastify.get('/panes/:filename', async (request, reply) => {
     reply
       .code(200)
       .header('Content-Type', 'application/javascript')
-      .header('Cache-Control', 'public, max-age=300')
+      .header('Cache-Control', 'public, max-age=' + data.cacheMaxAge)
       .send(fileContent)
   } catch (err) {
     reply.code(404).send({ error: 'File not found' })
