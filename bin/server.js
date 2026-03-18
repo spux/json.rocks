@@ -1033,7 +1033,7 @@ function scanPanes() {
 
 // Build CSP header from base policy + pane annotations
 function buildCSP(paneData) {
-  const scriptSrc = ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', ...paneData.scriptSrc].join(' ')
+  const scriptSrc = ["'self'", "'unsafe-inline'", ...paneData.scriptSrc].join(' ')
   const connectSrc = ["'self'", 'https://www.google.com', ...paneData.connectSrc].join(' ')
   return `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; img-src 'self' https: data:; font-src 'self'`
 }
