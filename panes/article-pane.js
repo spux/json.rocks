@@ -22,6 +22,7 @@ export default {
     var images = store.propAll(root, 'img')
     var videos = store.propAll(root, 'video')
     var showFullText = false
+    var showAllLinks = false
 
     function isImageUrl(u) {
       return u && /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?.*)?$/i.test(u)
@@ -50,6 +51,108 @@ export default {
       return h ? 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(h) + '&sz=32' : ''
     }
 
+    // Build breadcrumb segments from URL
+    function breadcrumbs(u) {
+      try {
+        var parsed = new URL(u)
+        var segments = parsed.pathname.split('/').filter(Boolean)
+        var crumbs = []
+        var accumulated = parsed.origin
+        for (var i = 0; i < segments.length; i++) {
+          accumulated += '/' + segments[i]
+          crumbs.push({ label: decodeURIComponent(segments[i]), url: accumulated })
+        }
+        return crumbs
+      } catch(e) { return [] }
+    }
+
+    // Detect pagination links — checks text, rel, class, aria-label, parent class
+    function findPagination(allLinks, currentUrl) {
+      var prev = null, next = null, pages = []
+      var currentHost = hostname(currentUrl)
+
+      var nextPatterns = /\b(next|newer|forward)\b/
+      var prevPatterns = /\b(prev|previous|older|back)\b/
+      var paginationContext = /\b(pagination|pager|pagina|page-nav|page-numbers|nav-links)\b/
+
+      allLinks.forEach(function(l) {
+        var href = l['linkHref'] || ''
+        var text = (l['linkText'] || '').trim()
+        var textLower = text.toLowerCase()
+        var rel = (l['linkRel'] || '').toLowerCase()
+        var hints = l['linkHints'] || ''
+        if (!href || hostname(href) !== currentHost) return
+
+        // Check rel="next" / rel="prev" (strongest signal, can be compound like "nofollow next")
+        if (!next && /\bnext\b/.test(rel)) {
+          next = { href: href, text: text || 'Next' }
+        }
+        if (!prev && /\b(prev|previous)\b/.test(rel)) {
+          prev = { href: href, text: text || 'Previous' }
+        }
+
+        // Check link text
+        if (!next && /^(next|next\s*page|newer|→|›|»|>{1,2})$/i.test(textLower)) {
+          next = { href: href, text: text || 'Next' }
+        }
+        if (!prev && /^(prev|previous|prev\s*page|older|←|‹|«|<{1,2})$/i.test(textLower)) {
+          prev = { href: href, text: text || 'Previous' }
+        }
+
+        // Check class/aria-label hints
+        if (!next && nextPatterns.test(hints)) {
+          next = { href: href, text: text || 'Next' }
+        }
+        if (!prev && prevPatterns.test(hints)) {
+          prev = { href: href, text: text || 'Previous' }
+        }
+
+        // Numbered pages — look for links in pagination context or standalone numbers
+        if (/^\d+$/.test(textLower) && textLower !== '0') {
+          var inPaginationContext = paginationContext.test(hints) || /page[=\/]\d/.test(href)
+          if (inPaginationContext || parseInt(textLower) <= 100) {
+            pages.push({ href: href, text: text, num: parseInt(textLower) })
+          }
+        }
+      })
+
+      // Deduplicate and sort pages
+      var seen = new Set()
+      pages = pages.filter(function(p) {
+        if (seen.has(p.num)) return false
+        seen.add(p.num)
+        return true
+      }).sort(function(a, b) { return a.num - b.num }).slice(0, 10)
+
+      return { prev: prev, next: next, pages: pages }
+    }
+
+    // Detect nav/section links (menus, categories)
+    function findNavLinks(allLinks, currentUrl) {
+      var currentHost = hostname(currentUrl)
+      var nav = []
+      var seenHrefs = new Set()
+
+      allLinks.forEach(function(l) {
+        var href = l['linkHref'] || ''
+        var text = (l['linkText'] || '').trim()
+        if (!href || !text || text.length < 2 || text.length > 40) return
+        if (hostname(href) !== currentHost) return
+        if (seenHrefs.has(href)) return
+
+        // Short text, same host, not too deep = likely nav
+        var path = ''
+        try { path = new URL(href).pathname } catch(e) { return }
+        var depth = path.split('/').filter(Boolean).length
+        if (depth <= 2 && text.length <= 30 && !/\d{4,}/.test(text)) {
+          seenHrefs.add(href)
+          nav.push({ href: href, text: text })
+        }
+      })
+
+      return nav.slice(0, 12)
+    }
+
     function renderApp() {
       var title = root['title'] || 'Untitled'
       var desc = root['description'] || ''
@@ -63,6 +166,12 @@ export default {
       var lang = root['lang'] || ''
       var host = hostname(url)
       var favicon = logo || faviconUrl(url)
+      var crumbs = breadcrumbs(url)
+      var pagination = findPagination(links, url)
+      // Override with <link rel="next/prev"> from head if available
+      if (root['relNext'] && !pagination.next) pagination.next = { href: root['relNext'], text: 'Next' }
+      if (root['relPrev'] && !pagination.prev) pagination.prev = { href: root['relPrev'], text: 'Previous' }
+      var navLinks = findNavLinks(links, url)
 
       // Direct image URL
       if (isImageUrl(url) || (isImageUrl(image) && !desc && !text)) {
@@ -100,16 +209,35 @@ export default {
       var allImages = images.map(function(i) { return { src: i['imgSrc'], alt: i['imgAlt'] || '' } })
         .concat(imgLinks.map(function(i) { return { src: i.src, alt: i.alt } }))
 
+      // Determine if a link is internal (same host)
+      function linkHref(href) {
+        return hostname(href) === host
+          ? '?uri=' + encodeURIComponent(href)
+          : href
+      }
+      function linkTarget(href) {
+        return hostname(href) === host ? '' : '_blank'
+      }
+
+      var visibleLinks = showAllLinks ? textLinks : textLinks.slice(0, 20)
+
       render(container, html`
         <style>
           .a-wrap { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 860px; margin: 0 auto; padding: 32px 20px 60px; color: #2c2c2c; }
 
-          /* Site bar */
-          .a-site { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-          .a-favicon { width: 20px; height: 20px; border-radius: 4px; }
-          .a-host { font-size: 13px; color: #888; }
-          .a-host a { color: #888; text-decoration: none; }
-          .a-host a:hover { color: #667eea; }
+          /* Breadcrumb bar */
+          .a-crumbs { display: flex; align-items: center; gap: 6px; margin-bottom: 16px; font-size: 13px; flex-wrap: wrap; }
+          .a-crumb-favicon { width: 18px; height: 18px; border-radius: 4px; }
+          .a-crumbs a { color: #667eea; text-decoration: none; }
+          .a-crumbs a:hover { text-decoration: underline; }
+          .a-crumb-sep { color: #ccc; }
+          .a-visit { margin-left: auto; padding: 6px 16px; background: #fff; color: #667eea; border: 1.5px solid #667eea; border-radius: 20px; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: all 0.15s; }
+          .a-visit:hover { background: #667eea; color: #fff; }
+
+          /* Nav links */
+          .a-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+          .a-nav-link { padding: 5px 14px; background: #f4f4f8; border-radius: 20px; font-size: 13px; color: #555; text-decoration: none; transition: all 0.15s; }
+          .a-nav-link:hover { background: #e8e8f0; color: #333; }
 
           /* Hero card */
           .a-hero { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(0,0,0,0.06); overflow: hidden; margin-bottom: 24px; }
@@ -143,6 +271,16 @@ export default {
           .a-link { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #fafafa; border-radius: 8px; text-decoration: none; color: #2c2c2c; transition: all 0.15s; font-size: 14px; }
           .a-link:hover { background: #f0f0ff; transform: translateX(3px); }
           .a-link-dot { width: 6px; height: 6px; border-radius: 50%; background: #667eea; flex-shrink: 0; }
+          .a-link-ext { width: 6px; height: 6px; border-radius: 50%; background: #ccc; flex-shrink: 0; }
+
+          /* Pagination */
+          .a-pagination { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+          .a-page-btn { padding: 8px 16px; background: #fff; border: 1px solid #eee; border-radius: 8px; text-decoration: none; color: #667eea; font-size: 14px; font-weight: 500; transition: all 0.15s; }
+          .a-page-btn:hover { background: #f0f0ff; border-color: #667eea; }
+          .a-page-prev, .a-page-next { background: #667eea; color: #fff; border-color: #667eea; }
+          .a-page-prev:hover, .a-page-next:hover { background: #5a67d8; }
+          .a-page-num { padding: 8px 12px; background: #fff; border: 1px solid #eee; border-radius: 8px; text-decoration: none; color: #555; font-size: 13px; transition: all 0.15s; }
+          .a-page-num:hover { border-color: #667eea; color: #667eea; }
 
           /* Videos */
           .a-video { border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 16/9; margin-bottom: 10px; }
@@ -159,10 +297,22 @@ export default {
         </style>
 
         <div class="a-wrap">
-          <div class="a-site">
-            ${favicon ? html`<img class="a-favicon" src="${favicon}" alt="" />` : null}
-            <span class="a-host"><a href="${'?uri=' + encodeURIComponent('https://' + host)}">${host}</a></span>
+          <div class="a-crumbs">
+            ${favicon ? html`<img class="a-crumb-favicon" src="${favicon}" alt="" onerror="this.style.display='none'" />` : null}
+            <a href="${'?uri=' + encodeURIComponent('https://' + host)}">${host}</a>
+            ${crumbs.map(function(c) {
+              return html`<span class="a-crumb-sep">/</span><a href="${'?uri=' + encodeURIComponent(c.url)}">${c.label}</a>`
+            })}
+            <a class="a-visit" href="${url}" target="_blank">Visit site \u2197</a>
           </div>
+
+          ${navLinks.length > 0 ? html`
+            <div class="a-nav">
+              ${navLinks.map(function(n) {
+                return html`<a class="a-nav-link" href="${'?uri=' + encodeURIComponent(n.href)}">${n.text}</a>`
+              })}
+            </div>
+          ` : null}
 
           <div class="a-hero">
             ${image ? html`<img class="a-hero-img" src="${image}" alt="${title}" onerror="this.style.display='none'" />` : null}
@@ -179,6 +329,16 @@ export default {
               </div>
             ` : null}
           </div>
+
+          ${pagination.prev || pagination.next || pagination.pages.length > 0 ? html`
+            <div class="a-pagination">
+              ${pagination.prev ? html`<a class="a-page-btn a-page-prev" href="${'?uri=' + encodeURIComponent(pagination.prev.href)}">\u2190 ${pagination.prev.text}</a>` : null}
+              ${pagination.pages.map(function(p) {
+                return html`<a class="a-page-num" href="${'?uri=' + encodeURIComponent(p.href)}">${p.text}</a>`
+              })}
+              ${pagination.next ? html`<a class="a-page-btn a-page-next" href="${'?uri=' + encodeURIComponent(pagination.next.href)}">${pagination.next.text} \u2192</a>` : null}
+            </div>
+          ` : null}
 
           ${text ? html`
             <div class="a-card">
@@ -227,10 +387,19 @@ export default {
             <div class="a-card">
               <div class="a-card-title">\uD83D\uDD17 Links <span class="a-card-count">${textLinks.length}</span></div>
               <div class="a-links">
-                ${textLinks.slice(0, 20).map(function(l) {
-                  return html`<a class="a-link" href="${'?uri=' + encodeURIComponent(l.href)}"><span class="a-link-dot"></span> ${l.text}</a>`
+                ${visibleLinks.map(function(l) {
+                  var isInternal = hostname(l.href) === host
+                  return html`<a class="a-link" href="${linkHref(l.href)}" target="${linkTarget(l.href)}"><span class="${isInternal ? 'a-link-dot' : 'a-link-ext'}"></span> ${l.text}</a>`
                 })}
               </div>
+              ${textLinks.length > 20 && !showAllLinks ? html`<button class="a-toggle" onclick="${function() { showAllLinks = true; renderApp() }}">Show all ${textLinks.length} links \u2192</button>` : null}
+            </div>
+          ` : null}
+
+          ${pagination.prev || pagination.next ? html`
+            <div class="a-pagination" style="margin-top: 0;">
+              ${pagination.prev ? html`<a class="a-page-btn a-page-prev" href="${'?uri=' + encodeURIComponent(pagination.prev.href)}">\u2190 ${pagination.prev.text}</a>` : null}
+              ${pagination.next ? html`<a class="a-page-btn a-page-next" href="${'?uri=' + encodeURIComponent(pagination.next.href)}">${pagination.next.text} \u2192</a>` : null}
             </div>
           ` : null}
 

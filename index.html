@@ -85,7 +85,10 @@
     var links = (scraped.links || []).slice(0, 30).map(function(l, i) {
       var href = l.href || ''
       if (href && href.startsWith('/')) try { href = new URL(href, uri).href } catch(e) {}
-      return { "@id": "#link" + i, "@type": "Link", "linkText": l.text || '', "linkHref": href }
+      var link = { "@id": "#link" + i, "@type": "Link", "linkText": l.text || '', "linkHref": href }
+      if (l.rel) link.linkRel = l.rel
+      if (l.hints) link.linkHints = l.hints
+      return link
     })
 
     var images = (scraped.images || []).slice(0, 30).map(function(img, i) {
@@ -116,7 +119,9 @@
       "text": scraped.text ? scraped.text.slice(0, 2000) : '',
       "link": links,
       "img": images,
-      "video": videos
+      "video": videos,
+      "relNext": scraped.relNext || '',
+      "relPrev": scraped.relPrev || ''
     }
   }
 

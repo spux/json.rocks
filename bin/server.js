@@ -785,6 +785,12 @@ async function scrapeUrl(uri, logger, reqId, refresh) {
   var favicon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href') || $('link[rel="apple-touch-icon"]').attr('href')
   if (favicon) result.favicon = resolveUrl(favicon)
 
+  // Extract <link rel="next"/"prev"> from head (pagination hints)
+  var linkNext = $('link[rel="next"]').attr('href')
+  var linkPrev = $('link[rel="prev"]').attr('href')
+  if (linkNext) result.relNext = resolveUrl(linkNext)
+  if (linkPrev) result.relPrev = resolveUrl(linkPrev)
+
   // Extract videos
   $('video').each(function (i, el) {
     var src = $(el).attr('src') || $(el).find('source').first().attr('src')
@@ -799,7 +805,7 @@ async function scrapeUrl(uri, logger, reqId, refresh) {
     }
   })
 
-  // Extract links — filter junk, deduplicate
+  // Extract links — filter junk, deduplicate, include pagination hints
   var seenHrefs = new Set()
   $('a').each(function (i, el) {
     var href = $(el).attr('href')
@@ -810,8 +816,20 @@ async function scrapeUrl(uri, logger, reqId, refresh) {
     if (!resolved || seenHrefs.has(resolved)) return
     seenHrefs.add(resolved)
     var text = $(el).text().replace(/\s+/g, ' ').trim()
-    if (text.length < 2) return
-    result.links.push({ text: text, href: resolved })
+    if (!text) return
+    var link = { text: text, href: resolved }
+    // Capture attributes useful for pagination/nav detection
+    var rel = $(el).attr('rel')
+    var cls = $(el).attr('class') || ''
+    var ariaLabel = $(el).attr('aria-label') || ''
+    var dataTrack = $(el).attr('data-track') || $(el).attr('data-track-action') || ''
+    var parentEl = $(el).parent()
+    var parentCls = parentEl.attr('class') || ''
+    var grandparentCls = parentEl.parent().attr('class') || ''
+    if (rel) link.rel = rel
+    var allHints = [cls, ariaLabel, dataTrack, parentCls, grandparentCls].filter(Boolean).join(' ').toLowerCase().trim()
+    if (allHints) link.hints = allHints
+    result.links.push(link)
   })
 
   // Extract images — filter tracking pixels, deduplicate
