@@ -82,7 +82,7 @@
   }
 
   function transformToJsonLd(scraped) {
-    var links = (scraped.links || []).slice(0, 30).map(function(l, i) {
+    var links = (scraped.links || []).map(function(l, i) {
       var href = l.href || ''
       if (href && href.startsWith('/')) try { href = new URL(href, uri).href } catch(e) {}
       var link = { "@id": "#link" + i, "@type": "Link", "linkText": l.text || '', "linkHref": href }
@@ -91,7 +91,7 @@
       return link
     })
 
-    var images = (scraped.images || []).slice(0, 30).map(function(img, i) {
+    var images = (scraped.images || []).map(function(img, i) {
       var src = img.src || img.href || ''
       if (src && src.startsWith('/')) try { src = new URL(src, uri).href } catch(e) {}
       return { "@id": "#img" + i, "@type": "Image", "imgSrc": src, "imgAlt": img.alt || '' }

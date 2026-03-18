@@ -186,9 +186,10 @@ export default {
         return
       }
 
-      // Split links into image links and text links
+      // Split links into categories
       var imgLinks = []
       var textLinks = []
+      var tagLinks = []
       links.forEach(function(l) {
         if (!l['linkHref']) return
         var href = l['linkHref']
@@ -201,7 +202,13 @@ export default {
           imgLinks.push({ src: imgSrc, href: href, alt: lt.replace(/<[^>]*>/g, '').trim() || href })
         } else {
           var clean = lt.replace(/<[^>]*>/g, '').trim()
-          if (clean.length > 2) textLinks.push({ href: href, text: clean })
+          if (!clean) return
+          // Detect tag/category links
+          if (/\/(tags?|category|categories|topic|topics|label|labels)\//i.test(href) || /\b(tag|category)\b/i.test(l['linkHints'] || '')) {
+            tagLinks.push({ href: href, text: clean })
+          } else if (clean.length > 2) {
+            textLinks.push({ href: href, text: clean })
+          }
         }
       })
 
@@ -282,6 +289,11 @@ export default {
           .a-page-num { padding: 8px 12px; background: #fff; border: 1px solid #eee; border-radius: 8px; text-decoration: none; color: #555; font-size: 13px; transition: all 0.15s; }
           .a-page-num:hover { border-color: #667eea; color: #667eea; }
 
+          /* Tags */
+          .a-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+          .a-tag { display: inline-block; padding: 5px 14px; background: #f0f4ff; border-radius: 20px; font-size: 13px; color: #667eea; text-decoration: none; transition: all 0.15s; }
+          .a-tag:hover { background: #e0e8ff; color: #5a67d8; }
+
           /* Videos */
           .a-video { border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 16/9; margin-bottom: 10px; }
           .a-video iframe { width: 100%; height: 100%; border: none; }
@@ -329,6 +341,17 @@ export default {
               </div>
             ` : null}
           </div>
+
+          ${tagLinks.length > 0 ? html`
+            <div class="a-card">
+              <div class="a-card-title">\uD83C\uDFF7 Tags <span class="a-card-count">${tagLinks.length}</span></div>
+              <div class="a-tags">
+                ${tagLinks.map(function(t) {
+                  return html`<a class="a-tag" href="${'?uri=' + encodeURIComponent(t.href)}">${t.text}</a>`
+                })}
+              </div>
+            </div>
+          ` : null}
 
           ${pagination.prev || pagination.next || pagination.pages.length > 0 ? html`
             <div class="a-pagination">
