@@ -1,4 +1,4 @@
-import { html, render } from 'https://losos.org/losos/html.js'
+import { html, render } from '/losos/html.js'
 export default {
   label: 'JSON', icon: '\u{1F4CB}',
   canHandle(subject, store) { return store.get(subject.value) != null },

@@ -1,5 +1,5 @@
-import { createStore } from 'https://losos.org/losos/store.js'
-import { html, render, onUnmount } from 'https://losos.org/losos/html.js'
+import { createStore } from '/losos/store.js'
+import { html, render, onUnmount } from '/losos/html.js'
 
 export default {
   label: 'Preview',

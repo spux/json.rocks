@@ -521,6 +521,33 @@ function mapURI (parsed, root, origin) {
   return mapped
 }
 
+// Serve losos framework files
+fastify.get('/losos/:filename', async (request, reply) => {
+  const filename = request.params.filename
+
+  if (!/^[a-zA-Z0-9_\-\.]+\.js$/.test(filename)) {
+    return reply.code(404).send({ error: 'File not found' })
+  }
+
+  try {
+    const filePath = path.join(__dirname, '../losos', filename)
+
+    if (!await fs.pathExists(filePath)) {
+      return reply.code(404).send({ error: 'File not found' })
+    }
+
+    const fileContent = await fs.readFile(filePath, 'utf8')
+
+    reply
+      .code(200)
+      .header('Content-Type', 'application/javascript')
+      .header('Cache-Control', 'public, max-age=86400')
+      .send(fileContent)
+  } catch (err) {
+    reply.code(404).send({ error: 'File not found' })
+  }
+})
+
 // Serve losos pane files
 fastify.get('/panes/:filename', async (request, reply) => {
   const filename = request.params.filename
@@ -1007,7 +1034,7 @@ function scanPanes() {
 
 // Build CSP header from base policy + pane annotations
 function buildCSP(paneData) {
-  const scriptSrc = ["'self'", "'unsafe-inline'", 'https://losos.org', 'https://cdnjs.cloudflare.com', ...paneData.scriptSrc].join(' ')
+  const scriptSrc = ["'self'", "'unsafe-inline'", 'https://cdnjs.cloudflare.com', ...paneData.scriptSrc].join(' ')
   const connectSrc = ["'self'", 'https://www.google.com', ...paneData.connectSrc].join(' ')
   return `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; img-src 'self' https: data:; font-src 'self'`
 }
