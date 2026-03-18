@@ -568,7 +568,7 @@ fastify.get('/panes/:filename', async (request, reply) => {
     reply
       .code(200)
       .header('Content-Type', 'application/javascript')
-      .header('Cache-Control', 'no-cache')
+      .header('Cache-Control', 'public, max-age=300')
       .send(fileContent)
   } catch (err) {
     reply.code(404).send({ error: 'File not found' })
