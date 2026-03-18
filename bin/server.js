@@ -521,32 +521,31 @@ function mapURI (parsed, root, origin) {
   return mapped
 }
 
-// Serve losos framework files
-fastify.get('/losos/:filename', async (request, reply) => {
-  const filename = request.params.filename
-
-  if (!/^[a-zA-Z0-9_\-\.]+\.js$/.test(filename)) {
-    return reply.code(404).send({ error: 'File not found' })
-  }
-
-  try {
-    const filePath = path.join(__dirname, '../losos', filename)
-
-    if (!await fs.pathExists(filePath)) {
+// Serve losos framework files (/losos/* and /lion/*)
+function serveStaticJs(routePrefix, dirName) {
+  fastify.get(routePrefix + '/:filename', async (request, reply) => {
+    const filename = request.params.filename
+    if (!/^[a-zA-Z0-9_\-\.]+\.js$/.test(filename)) {
       return reply.code(404).send({ error: 'File not found' })
     }
-
-    const fileContent = await fs.readFile(filePath, 'utf8')
-
-    reply
-      .code(200)
-      .header('Content-Type', 'application/javascript')
-      .header('Cache-Control', 'public, max-age=86400')
-      .send(fileContent)
-  } catch (err) {
-    reply.code(404).send({ error: 'File not found' })
-  }
-})
+    try {
+      const filePath = path.join(__dirname, '..', dirName, filename)
+      if (!await fs.pathExists(filePath)) {
+        return reply.code(404).send({ error: 'File not found' })
+      }
+      const fileContent = await fs.readFile(filePath, 'utf8')
+      reply
+        .code(200)
+        .header('Content-Type', 'application/javascript')
+        .header('Cache-Control', 'public, max-age=86400')
+        .send(fileContent)
+    } catch (err) {
+      reply.code(404).send({ error: 'File not found' })
+    }
+  })
+}
+serveStaticJs('/losos', 'losos')
+serveStaticJs('/lion', 'lion')
 
 // Serve losos pane files
 fastify.get('/panes/:filename', async (request, reply) => {
