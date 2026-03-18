@@ -382,7 +382,7 @@ data.key = argv.key || data.key
 data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
 data.filter = argv.filter || data.filter
-data.cacheMaxAge = parseInt(argv['cache-max-age'] || argv.cacheMaxAge) || data.cacheMaxAge
+data.cacheMaxAge = argv['cache-max-age'] != null ? parseInt(argv['cache-max-age']) : (argv.cacheMaxAge != null ? parseInt(argv.cacheMaxAge) : data.cacheMaxAge)
 var searx = argv.searx || data.searx
 var root = './data'
 
