@@ -30,16 +30,21 @@ async function loadData() {
   var rawData = null
   var uriParam = new URLSearchParams(window.location.search).get('uri')
 
-  // If ?uri= is provided, fetch that document
+  // If ?uri= is provided, use pre-loaded data or fetch that document
   if (uriParam) {
-    try {
-      var res = await fetch(uriParam.replace(/#.*$/, ''), { headers: { 'Accept': 'application/ld+json' } })
-      var parsed = await res.json()
-      rawData = parsed
-      var dataEl = document.querySelector('script[type="application/ld+json"]')
-      if (dataEl) { dataEl.__jsonLd = parsed; dataEl.textContent = JSON.stringify(parsed) }
-    } catch (err) {
-      console.warn('[losos] Failed to fetch ?uri=:', uriParam, err)
+    if (window.__jrData) {
+      // Data already loaded by json.rocks client
+      rawData = window.__jrData
+    } else {
+      try {
+        var res = await fetch(uriParam.replace(/#.*$/, ''), { headers: { 'Accept': 'application/ld+json' } })
+        var parsed = await res.json()
+        rawData = parsed
+        var dataEl = document.querySelector('script[type="application/ld+json"]')
+        if (dataEl) { dataEl.__jsonLd = parsed; dataEl.textContent = JSON.stringify(parsed) }
+      } catch (err) {
+        console.warn('[losos] Failed to fetch ?uri=:', uriParam, err)
+      }
     }
   }
 
