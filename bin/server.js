@@ -363,7 +363,6 @@ globalThis.data = {
   key: './privkey.pem',
   cert: './fullchain.pem',
   scheme: 'http',
-  fullhtml: false,
   searx: 'https://search.inetol.net/',
   filter: null
 }
@@ -375,7 +374,6 @@ data.cert = argv.cert || data.cert
 data.scheme = argv.scheme || data.scheme
 data.filter = argv.filter || data.filter
 var searx = argv.searx || data.searx
-var fullhtml = argv.fullhtml || data.fullhtml
 var root = './data'
 
 console.log('data', data)
@@ -896,16 +894,17 @@ function scanPanes() {
       .filter(f => f.endsWith('-pane.js'))
       .sort()
 
-    result.scriptTags = files.map(f => `<script type="module" data-pane src="/panes/${f}"></script>`).join('\n')
-
     // Parse annotations from each pane file
+    const domainPanes = []
+    const genericPanes = []
+
     for (const file of files) {
       const content = fs.readFileSync(path.join(panesDir, file), 'utf8')
       const lines = content.split('\n')
+      let isDomainPane = false
 
       for (const line of lines) {
         const trimmed = line.trim()
-        // Stop parsing at first non-comment line
         if (!trimmed.startsWith('//')) break
 
         const connectMatch = trimmed.match(/^\/\/\s*@connect\s+(.+)/)
@@ -915,9 +914,22 @@ function scanPanes() {
         if (scriptMatch) result.scriptSrc.add('https://' + scriptMatch[1].trim())
 
         const directMatch = trimmed.match(/^\/\/\s*@direct\s+(.+)/)
-        if (directMatch) result.directDomains.push(directMatch[1].trim())
+        if (directMatch) {
+          result.directDomains.push(directMatch[1].trim())
+          isDomainPane = true
+        }
+      }
+
+      if (isDomainPane) {
+        domainPanes.push(file)
+      } else {
+        genericPanes.push(file)
       }
     }
+
+    // Domain-specific panes first, then generic defaults
+    const sorted = [...domainPanes, ...genericPanes]
+    result.scriptTags = sorted.map(f => `<script type="module" data-pane src="/panes/${f}"></script>`).join('\n')
   } catch (err) {
     console.warn('Could not read panes directory:', err.message)
   }
