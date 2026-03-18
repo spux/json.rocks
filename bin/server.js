@@ -23,6 +23,10 @@ import metaVideo from 'metascraper-video'
 import metaYoutube from 'metascraper-youtube'
 import metaAmazon from 'metascraper-amazon'
 import metaUrl from 'metascraper-url'
+import metaLang from 'metascraper-lang'
+import metaAudio from 'metascraper-audio'
+import metaLogoFavicon from 'metascraper-logo-favicon'
+import metaReadability from 'metascraper-readability'
 import minimist from 'minimist'
 import https from 'https'
 import http from 'http'
@@ -347,9 +351,13 @@ const meta = metascraper([
   metaDescription(),
   metaImage(),
   metaLogo(),
+  metaLogoFavicon(),
   metaClearbit(),
   metaPublisher(),
   metaTitle(),
+  metaLang(),
+  metaAudio(),
+  metaReadability(),
   metaSpotify(),
   metaVideo(),
   metaYoutube(),
@@ -820,23 +828,83 @@ fastify.get('/api', async (request, reply) => {
         apiData['@context'] = 'https://schema.org'
         if (!apiData.videos) apiData.videos = []
         if (!apiData.links) apiData.links = []
+        if (!apiData.images) apiData.images = []
 
         const $ = cheerio.load(html.data)
 
-        $('video').each(function (i, link) {
-          apiData.videos.push({ text: $(link).text() || 'video', href: $(link).attr('src') })
-        })
-        $('iframe').each(function (i, link) {
-          apiData.links.push({ text: $(link).text() || 'iframe', href: $(link).attr('src') })
-        })
-        $('a').each(function (i, link) {
-          apiData.links.push({ text: $(link).text(), href: $(link).attr('href') })
+        // Helper: resolve relative URLs to absolute
+        function resolveUrl(href) {
+          if (!href) return ''
+          href = href.trim()
+          if (href.startsWith('http://') || href.startsWith('https://')) return href
+          if (href.startsWith('//')) return 'https:' + href
+          try { return new URL(href, uri).href } catch (e) { return '' }
+        }
+
+        // Extract JSON-LD structured data from source page
+        $('script[type="application/ld+json"]').each(function (i, el) {
+          try {
+            var jsonLd = JSON.parse($(el).text())
+            if (!apiData.jsonLd) apiData.jsonLd = []
+            apiData.jsonLd.push(jsonLd)
+          } catch (e) {}
         })
 
-        if (!apiData.images) apiData.images = []
-        $('img').each(function (i, img) {
-          var imgData = { src: $(img).attr('src'), alt: $(img).attr('alt') || '', title: $(img).attr('title') || '' }
-          if (imgData.src) apiData.images.push(imgData)
+        // Extract canonical URL
+        var canonical = $('link[rel="canonical"]').attr('href')
+        if (canonical) apiData.canonicalLink = resolveUrl(canonical)
+
+        // Extract favicon
+        var favicon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href') || $('link[rel="apple-touch-icon"]').attr('href')
+        if (favicon) apiData.favicon = resolveUrl(favicon)
+
+        // Extract videos
+        $('video').each(function (i, el) {
+          var src = $(el).attr('src') || $(el).find('source').first().attr('src')
+          if (src) apiData.videos.push({ text: $(el).attr('title') || 'video', url: resolveUrl(src) })
+        })
+
+        // Extract video iframes (YouTube, Vimeo, etc.)
+        $('iframe').each(function (i, el) {
+          var src = $(el).attr('src')
+          if (src && /youtube|vimeo|dailymotion|twitch/.test(src)) {
+            apiData.videos.push({ text: $(el).attr('title') || 'video', url: resolveUrl(src) })
+          }
+        })
+
+        // Extract links — filter junk, deduplicate
+        var seenHrefs = new Set()
+        $('a').each(function (i, el) {
+          var href = $(el).attr('href')
+          if (!href) return
+          href = href.trim()
+          // Skip junk links
+          if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('data:')) return
+          var resolved = resolveUrl(href)
+          if (!resolved || seenHrefs.has(resolved)) return
+          seenHrefs.add(resolved)
+          var text = $(el).text().replace(/\s+/g, ' ').trim()
+          if (text.length < 2) return
+          apiData.links.push({ text: text, href: resolved })
+        })
+
+        // Extract images — filter tracking pixels, deduplicate
+        var seenSrcs = new Set()
+        $('img').each(function (i, el) {
+          var src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src')
+          if (!src) return
+          var resolved = resolveUrl(src)
+          if (!resolved || seenSrcs.has(resolved)) return
+          seenSrcs.add(resolved)
+          var width = parseInt($(el).attr('width')) || 0
+          var height = parseInt($(el).attr('height')) || 0
+          // Skip likely tracking pixels
+          if ((width > 0 && width <= 2) || (height > 0 && height <= 2)) return
+          apiData.images.push({
+            src: resolved,
+            alt: $(el).attr('alt') || '',
+            title: $(el).attr('title') || ''
+          })
         })
 
         cache.set(uri, apiData)

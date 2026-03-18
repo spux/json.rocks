@@ -95,7 +95,7 @@
     })
 
     var videos = (scraped.videos || []).map(function(v, i) {
-      return { "@id": "#vid" + i, "@type": "Video", "videoUrl": v.url || v.href || '' }
+      return { "@id": "#vid" + i, "@type": "Video", "videoUrl": v.url || v.href || '', "text": v.text || '' }
     })
 
     var authorStr = Array.isArray(scraped.author) ? scraped.author.join(', ') : (scraped.author || '')

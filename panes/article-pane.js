@@ -62,7 +62,7 @@ export default {
       var text = root['text'] || ''
       var lang = root['lang'] || ''
       var host = hostname(url)
-      var favicon = faviconUrl(url)
+      var favicon = logo || faviconUrl(url)
 
       // Direct image URL
       if (isImageUrl(url) || (isImageUrl(image) && !desc && !text)) {
@@ -192,12 +192,17 @@ export default {
             <div class="a-card">
               <div class="a-card-title">\uD83C\uDFAC Videos <span class="a-card-count">${videos.length}</span></div>
               ${videos.map(function(v) {
-                var vUrl = v['videoUrl'] || ''
+                var vUrl = v['videoUrl'] || v['url'] || v['href'] || ''
+                if (!vUrl) return null
                 if (vUrl.includes('youtube.com') || vUrl.includes('youtu.be')) {
                   var embedUrl = vUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')
                   return html`<div class="a-video"><iframe src="${embedUrl}" allowfullscreen></iframe></div>`
                 }
-                return html`<a class="a-link" href="${vUrl}" target="_blank"><span class="a-link-dot"></span> ${vUrl}</a>`
+                if (vUrl.includes('vimeo.com')) {
+                  var vimeoId = vUrl.match(/vimeo\.com\/(\d+)/)
+                  if (vimeoId) return html`<div class="a-video"><iframe src="${'https://player.vimeo.com/video/' + vimeoId[1]}" allowfullscreen></iframe></div>`
+                }
+                return html`<a class="a-link" href="${vUrl}" target="_blank"><span class="a-link-dot"></span> ${v['text'] || vUrl}</a>`
               })}
             </div>
           ` : null}
