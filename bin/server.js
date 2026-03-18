@@ -678,6 +678,179 @@ fastify.get('/health', async (request, reply) => {
   return health
 })
 
+// Core scraping function — extracts metadata from a URL
+async function scrapeUrl(uri, logger, reqId, refresh) {
+  if (!uri.match(/^http/)) {
+    uri = 'https://' + uri
+  }
+
+  var parsed = url.parse(uri)
+  var origin = parsed.hostname
+  var mapped = mapURI(parsed, root, origin)
+  var result
+
+  // Check memory cache first
+  if (cache.has(uri) && !refresh) {
+    return cache.get(uri)
+  }
+
+  // File cache fallback
+  if (fs.existsSync(mapped) && !refresh) {
+    result = JSON.parse(await fs.readFile(mapped, 'utf8'))
+    cache.set(uri, result)
+    return result
+  }
+
+  // DNS validation
+  await validateUrlWithDNS(uri)
+
+  // Fetch
+  var html = await axios.get(uri, {
+    headers: {
+      'User-Agent': user_agent_desktop,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1'
+    },
+    timeout: 5000,
+    maxRedirects: 3,
+    maxContentLength: MAX_CONTENT_SIZE,
+    maxBodyLength: MAX_CONTENT_SIZE,
+    validateStatus: (status) => status < 500,
+    beforeRedirect: (options) => {
+      const redirectUrl = options.href
+      if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
+        throw new Error(`Invalid redirect protocol: ${redirectUrl}`)
+      }
+      if (isBlockedIP(redirectUrl)) {
+        throw new Error(`Redirect to blocked IP address: ${redirectUrl}`)
+      }
+    }
+  })
+
+  // Extract with unfluff
+  try {
+    result = extractor(html.data)
+  } catch (extractorErr) {
+    logDedupedError(logger, 'unfluff', extractorErr.message, {
+      url: uri, domain: extractDomain(uri), fallback: 'basic_extraction', reqId
+    })
+    result = { title: '', text: '', url: uri, image: '', description: '' }
+  }
+
+  // Enrich with metascraper
+  try {
+    const metadata = await metascraper({ html: html.data, url: uri })
+    result = { ...result, ...metadata }
+  } catch (metascraperErr) {
+    logDedupedError(logger, 'metascraper', metascraperErr.message, {
+      url: uri, domain: extractDomain(uri), fallback: 'basic_extraction', reqId
+    })
+  }
+
+  result['@context'] = 'https://schema.org'
+  if (!result.videos) result.videos = []
+  if (!result.links) result.links = []
+  if (!result.images) result.images = []
+
+  const $ = cheerio.load(html.data)
+
+  // Helper: resolve relative URLs to absolute
+  function resolveUrl(href) {
+    if (!href) return ''
+    href = href.trim()
+    if (href.startsWith('http://') || href.startsWith('https://')) return href
+    if (href.startsWith('//')) return 'https:' + href
+    try { return new URL(href, uri).href } catch (e) { return '' }
+  }
+
+  // Extract JSON-LD structured data from source page
+  $('script[type="application/ld+json"]').each(function (i, el) {
+    try {
+      var jsonLd = JSON.parse($(el).text())
+      if (!result.jsonLd) result.jsonLd = []
+      result.jsonLd.push(jsonLd)
+    } catch (e) {}
+  })
+
+  // Extract canonical URL
+  var canonical = $('link[rel="canonical"]').attr('href')
+  if (canonical) result.canonicalLink = resolveUrl(canonical)
+
+  // Extract favicon
+  var favicon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href') || $('link[rel="apple-touch-icon"]').attr('href')
+  if (favicon) result.favicon = resolveUrl(favicon)
+
+  // Extract videos
+  $('video').each(function (i, el) {
+    var src = $(el).attr('src') || $(el).find('source').first().attr('src')
+    if (src) result.videos.push({ text: $(el).attr('title') || 'video', url: resolveUrl(src) })
+  })
+
+  // Extract video iframes (YouTube, Vimeo, etc.)
+  $('iframe').each(function (i, el) {
+    var src = $(el).attr('src')
+    if (src && /youtube|vimeo|dailymotion|twitch/.test(src)) {
+      result.videos.push({ text: $(el).attr('title') || 'video', url: resolveUrl(src) })
+    }
+  })
+
+  // Extract links — filter junk, deduplicate
+  var seenHrefs = new Set()
+  $('a').each(function (i, el) {
+    var href = $(el).attr('href')
+    if (!href) return
+    href = href.trim()
+    if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('data:')) return
+    var resolved = resolveUrl(href)
+    if (!resolved || seenHrefs.has(resolved)) return
+    seenHrefs.add(resolved)
+    var text = $(el).text().replace(/\s+/g, ' ').trim()
+    if (text.length < 2) return
+    result.links.push({ text: text, href: resolved })
+  })
+
+  // Extract images — filter tracking pixels, deduplicate
+  var seenSrcs = new Set()
+  $('img').each(function (i, el) {
+    var src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src')
+    if (!src) return
+    var resolved = resolveUrl(src)
+    if (!resolved || seenSrcs.has(resolved)) return
+    seenSrcs.add(resolved)
+    var width = parseInt($(el).attr('width')) || 0
+    var height = parseInt($(el).attr('height')) || 0
+    if ((width > 0 && width <= 2) || (height > 0 && height <= 2)) return
+    result.images.push({ src: resolved, alt: $(el).attr('alt') || '', title: $(el).attr('title') || '' })
+  })
+
+  // Cache results
+  cache.set(uri, result)
+  var file = mapURI(parsed, root, origin)
+  fs.outputFile(file, JSON.stringify(result, null, 2)).catch(err => {
+    console.error('Failed to write cache file:', err)
+  })
+
+  return result
+}
+
+// Text search function
+async function searchText(query, refresh) {
+  var mapped = mapURI({ pathname: query }, root, 'q/')
+  if (fs.existsSync(mapped) && !refresh) {
+    return JSON.parse(await fs.readFile(mapped, 'utf8'))
+  }
+  var html = await axios.get(
+    searx + `/?q=${query}&categories=general&language=en-US&format=json`,
+    { headers: headers }
+  )
+  var result = html.data
+  await fs.outputFile(mapped, JSON.stringify(result, null, 2))
+  return result
+}
+
 // JSON API endpoint — returns scraped data as JSON
 fastify.get('/api', async (request, reply) => {
   var uri = request.query.uri
@@ -769,19 +942,8 @@ fastify.get('/api', async (request, reply) => {
 
     // Text search
     if (uri.match(/^[a-zA-Z ]*$/)) {
-      var mapped = mapURI({ pathname: uri }, root, 'q/')
-      var apiData
       try {
-        if (fs.existsSync(mapped) && !refresh) {
-          apiData = JSON.parse(await fs.readFile(mapped, 'utf8'))
-        } else {
-          var html = await axios.get(
-            searx + `/?q=${uri}&categories=general&language=en-US&format=json`,
-            { headers: headers }
-          )
-          apiData = html.data
-          await fs.outputFile(mapped, JSON.stringify(apiData, null, 2))
-        }
+        var apiData = await searchText(uri, refresh)
       } catch (err) {
         console.error(err)
         return reply.code(500).send({ error: 'Search failed' })
@@ -790,155 +952,9 @@ fastify.get('/api', async (request, reply) => {
     }
 
     // URL scraping
-    if (!uri.match(/^http/)) {
-      uri = 'https://' + uri
-    }
-
-    var parsed = url.parse(uri)
-    var origin = parsed.hostname
-    var mapped = mapURI(parsed, root, origin)
     var apiData
-
     try {
-      if (cache.has(uri) && !refresh) {
-        apiData = cache.get(uri)
-      } else if (fs.existsSync(mapped) && !refresh) {
-        apiData = JSON.parse(await fs.readFile(mapped, 'utf8'))
-        cache.set(uri, apiData)
-      } else {
-        await validateUrlWithDNS(uri)
-
-        var html = await axios.get(uri, {
-          headers: {
-            'User-Agent': user_agent_desktop,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-          },
-          timeout: 5000,
-          maxRedirects: 3,
-          maxContentLength: MAX_CONTENT_SIZE,
-          maxBodyLength: MAX_CONTENT_SIZE,
-          validateStatus: (status) => status < 500,
-          beforeRedirect: (options, responseDetails) => {
-            const redirectUrl = options.href
-            if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
-              throw new Error(`Invalid redirect protocol: ${redirectUrl}`)
-            }
-            if (isBlockedIP(redirectUrl)) {
-              throw new Error(`Redirect to blocked IP address: ${redirectUrl}`)
-            }
-          }
-        })
-
-        try {
-          apiData = extractor(html.data)
-        } catch (extractorErr) {
-          logDedupedError(fastify.log, 'unfluff', extractorErr.message, {
-            url: uri, domain: extractDomain(uri), fallback: 'basic_extraction', reqId: request.id
-          })
-          apiData = { title: '', text: '', url: uri, image: '', description: '' }
-        }
-
-        try {
-          const metadata = await metascraper({ html: html.data, url: uri })
-          apiData = { ...apiData, ...metadata }
-        } catch (metascraperErr) {
-          logDedupedError(fastify.log, 'metascraper', metascraperErr.message, {
-            url: uri, domain: extractDomain(uri), fallback: 'basic_extraction', reqId: request.id
-          })
-        }
-
-        apiData['@context'] = 'https://schema.org'
-        if (!apiData.videos) apiData.videos = []
-        if (!apiData.links) apiData.links = []
-        if (!apiData.images) apiData.images = []
-
-        const $ = cheerio.load(html.data)
-
-        // Helper: resolve relative URLs to absolute
-        function resolveUrl(href) {
-          if (!href) return ''
-          href = href.trim()
-          if (href.startsWith('http://') || href.startsWith('https://')) return href
-          if (href.startsWith('//')) return 'https:' + href
-          try { return new URL(href, uri).href } catch (e) { return '' }
-        }
-
-        // Extract JSON-LD structured data from source page
-        $('script[type="application/ld+json"]').each(function (i, el) {
-          try {
-            var jsonLd = JSON.parse($(el).text())
-            if (!apiData.jsonLd) apiData.jsonLd = []
-            apiData.jsonLd.push(jsonLd)
-          } catch (e) {}
-        })
-
-        // Extract canonical URL
-        var canonical = $('link[rel="canonical"]').attr('href')
-        if (canonical) apiData.canonicalLink = resolveUrl(canonical)
-
-        // Extract favicon
-        var favicon = $('link[rel="icon"]').attr('href') || $('link[rel="shortcut icon"]').attr('href') || $('link[rel="apple-touch-icon"]').attr('href')
-        if (favicon) apiData.favicon = resolveUrl(favicon)
-
-        // Extract videos
-        $('video').each(function (i, el) {
-          var src = $(el).attr('src') || $(el).find('source').first().attr('src')
-          if (src) apiData.videos.push({ text: $(el).attr('title') || 'video', url: resolveUrl(src) })
-        })
-
-        // Extract video iframes (YouTube, Vimeo, etc.)
-        $('iframe').each(function (i, el) {
-          var src = $(el).attr('src')
-          if (src && /youtube|vimeo|dailymotion|twitch/.test(src)) {
-            apiData.videos.push({ text: $(el).attr('title') || 'video', url: resolveUrl(src) })
-          }
-        })
-
-        // Extract links — filter junk, deduplicate
-        var seenHrefs = new Set()
-        $('a').each(function (i, el) {
-          var href = $(el).attr('href')
-          if (!href) return
-          href = href.trim()
-          // Skip junk links
-          if (!href || href === '#' || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('data:')) return
-          var resolved = resolveUrl(href)
-          if (!resolved || seenHrefs.has(resolved)) return
-          seenHrefs.add(resolved)
-          var text = $(el).text().replace(/\s+/g, ' ').trim()
-          if (text.length < 2) return
-          apiData.links.push({ text: text, href: resolved })
-        })
-
-        // Extract images — filter tracking pixels, deduplicate
-        var seenSrcs = new Set()
-        $('img').each(function (i, el) {
-          var src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src')
-          if (!src) return
-          var resolved = resolveUrl(src)
-          if (!resolved || seenSrcs.has(resolved)) return
-          seenSrcs.add(resolved)
-          var width = parseInt($(el).attr('width')) || 0
-          var height = parseInt($(el).attr('height')) || 0
-          // Skip likely tracking pixels
-          if ((width > 0 && width <= 2) || (height > 0 && height <= 2)) return
-          apiData.images.push({
-            src: resolved,
-            alt: $(el).attr('alt') || '',
-            title: $(el).attr('title') || ''
-          })
-        })
-
-        cache.set(uri, apiData)
-        var file = mapURI(parsed, root, origin)
-        fs.outputFile(file, JSON.stringify(apiData, null, 2)).catch(err => {
-          console.error('Failed to write cache file:', err)
-        })
-      }
+      apiData = await scrapeUrl(uri, fastify.log, request.id, refresh)
     } catch (err) {
       logDedupedError(fastify.log, 'network', err.message, {
         url: uri, domain: extractDomain(uri), errorCode: err.code, reqId: request.id
