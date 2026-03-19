@@ -1025,6 +1025,7 @@ function scanPanes() {
     scriptTags: '',
     connectSrc: new Set(),
     scriptSrc: new Set(),
+    frameSrc: new Set(),
     directDomains: []
   }
 
@@ -1051,6 +1052,9 @@ function scanPanes() {
 
         const scriptMatch = trimmed.match(/^\/\/\s*@script\s+(.+)/)
         if (scriptMatch) result.scriptSrc.add('https://' + scriptMatch[1].trim())
+
+        const frameMatch = trimmed.match(/^\/\/\s*@frame\s+(.+)/)
+        if (frameMatch) result.frameSrc.add('https://' + frameMatch[1].trim())
 
         const directMatch = trimmed.match(/^\/\/\s*@direct\s+(.+)/)
         if (directMatch) {
@@ -1080,7 +1084,8 @@ function scanPanes() {
 function buildCSP(paneData) {
   const scriptSrc = ["'self'", "'unsafe-inline'", ...paneData.scriptSrc].join(' ')
   const connectSrc = ["'self'", 'https://www.google.com', ...paneData.connectSrc].join(' ')
-  return `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; img-src 'self' https: data:; font-src 'self'`
+  const frameSrc = paneData.frameSrc.size > 0 ? ' frame-src ' + ["'self'", ...paneData.frameSrc].join(' ') + ';' : ''
+  return `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src ${connectSrc}; img-src 'self' https: data:; font-src 'self';${frameSrc}`
 }
 
 // MAIN — serves the losos-powered SPA with dynamically discovered panes
