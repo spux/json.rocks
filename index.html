@@ -94,7 +94,9 @@
     var images = (scraped.images || []).map(function(img, i) {
       var src = img.src || img.href || ''
       if (src && src.startsWith('/')) try { src = new URL(src, uri).href } catch(e) {}
-      return { "@id": "#img" + i, "@type": "Image", "imgSrc": src, "imgAlt": img.alt || '' }
+      var imgObj = { "@id": "#img" + i, "@type": "Image", "imgSrc": src, "imgAlt": img.alt || '' }
+      if (img.link) imgObj.imgLink = img.link
+      return imgObj
     })
 
     var videos = (scraped.videos || []).map(function(v, i) {

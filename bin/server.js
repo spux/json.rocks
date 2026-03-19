@@ -832,18 +832,27 @@ async function scrapeUrl(uri, logger, reqId, refresh) {
     result.links.push(link)
   })
 
-  // Extract images — filter tracking pixels, deduplicate
+  // Extract images — filter tracking pixels, deduplicate, capture parent link
   var seenSrcs = new Set()
   $('img').each(function (i, el) {
-    var src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src')
+    var src = $(el).attr('data-src') || $(el).attr('data-lazy-src') || $(el).attr('src')
     if (!src) return
+    // Skip inline SVG placeholders
+    if (src.startsWith('data:image/svg')) return
     var resolved = resolveUrl(src)
     if (!resolved || seenSrcs.has(resolved)) return
     seenSrcs.add(resolved)
     var width = parseInt($(el).attr('width')) || 0
     var height = parseInt($(el).attr('height')) || 0
     if ((width > 0 && width <= 2) || (height > 0 && height <= 2)) return
-    result.images.push({ src: resolved, alt: $(el).attr('alt') || '', title: $(el).attr('title') || '' })
+    var imgData = { src: resolved, alt: $(el).attr('alt') || '', title: $(el).attr('title') || '' }
+    // If image is inside a link, capture it
+    var parentLink = $(el).closest('a')
+    if (parentLink.length) {
+      var linkHref = parentLink.attr('href')
+      if (linkHref) imgData.link = resolveUrl(linkHref)
+    }
+    result.images.push(imgData)
   })
 
   // Cache results
