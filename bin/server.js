@@ -477,6 +477,16 @@ function extractDomain(urlString) {
   }
 }
 
+// Registrable domain (naive eTLD heuristic) so www/subdomain hops compare equal
+function baseDomain(hostname) {
+  const parts = hostname.toLowerCase().replace(/\.$/, '').split('.')
+  const secondLevelTlds = new Set(['co', 'com', 'net', 'org', 'gov', 'ac', 'edu'])
+  if (parts.length >= 3 && parts[parts.length - 1].length === 2 && secondLevelTlds.has(parts[parts.length - 2])) {
+    return parts.slice(-3).join('.')
+  }
+  return parts.slice(-2).join('.')
+}
+
 // Deduplicated error logging with structured context
 function logDedupedError(logger, errorType, errorMessage, context = {}) {
   const errorKey = `${errorType}:${context.domain || ''}:${errorMessage}`
@@ -728,6 +738,14 @@ async function scrapeUrl(uri, logger, reqId, refresh) {
       }
       if (isBlockedIP(redirectUrl)) {
         throw new Error(`Redirect to blocked IP address: ${redirectUrl}`)
+      }
+      // Refuse redirects that leave the requested site — following them would
+      // scrape (and cache) another site's content under the requested URL
+      const targetHost = extractDomain(redirectUrl)
+      if (baseDomain(targetHost) !== baseDomain(origin)) {
+        const err = new Error(`Cross-site redirect: ${origin} redirected to ${targetHost}`)
+        err.code = 'EREDIRECTAWAY'
+        throw err
       }
     }
   })
@@ -994,6 +1012,8 @@ fastify.get('/api', async (request, reply) => {
         return reply.code(503).send({ error: 'Connection refused', message: 'Could not connect to the target server' })
       } else if (err.code === 'ETIMEDOUT') {
         return reply.code(408).send({ error: 'Request timeout', message: 'The request took too long to complete' })
+      } else if (err.code === 'EREDIRECTAWAY' || /Cross-site redirect/.test(err.message || '')) {
+        return reply.code(502).send({ error: 'Cross-site redirect', message: err.message })
       } else {
         return reply.code(500).send({ error: 'Failed to process URL', message: 'Internal server error occurred' })
       }
