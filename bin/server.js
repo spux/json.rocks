@@ -1012,6 +1012,41 @@ fastify.get('/api', async (request, reply) => {
       apiData = [...imageLinks, ...imageElements]
     }
 
+    // Playlist output — format=m3u renders media URLs as a plain-text playlist
+    if (request.query.format === 'm3u') {
+      var urls
+      if (Array.isArray(apiData)) {
+        // A filter already reduced the data — use its hrefs/srcs as-is
+        urls = apiData.map(obj => obj?.href || obj?.src).filter(Boolean)
+      } else {
+        const imageLinks = (apiData.links || [])
+          .map(l => l?.href)
+          .filter(href => href && /\.(jpe?g|png|gif|webp|bmp)(\?|$)/i.test(href))
+        const images = (apiData.images || [])
+          .map(i => i?.src)
+          .filter(src => src && !/\.(svg|ico)(\?|$)/i.test(src) && !/^data:/i.test(src))
+        const videos = (apiData.videos || []).map(v => v?.url)
+        urls = [...imageLinks, ...images, ...videos].filter(Boolean)
+      }
+
+      const match = request.query.match
+      if (match) {
+        const needle = match.toLowerCase()
+        urls = urls.filter(u => u.toLowerCase().includes(needle))
+      }
+
+      const seen = new Set()
+      urls = urls.filter(u => !seen.has(u) && seen.add(u))
+
+      const title = typeof apiData?.title === 'string' ? apiData.title.replace(/\s+/g, ' ').trim() : ''
+      const lines = ['#EXTM3U']
+      if (title) lines.push('# ' + title)
+      lines.push('# ' + uri, ...urls)
+      return reply.code(200)
+        .header('Content-Type', 'audio/x-mpegurl; charset=utf-8')
+        .send(lines.join('\n') + '\n')
+    }
+
     return reply.code(200).header('Content-Type', 'application/json').send(apiData)
   } finally {
     cleanup()
