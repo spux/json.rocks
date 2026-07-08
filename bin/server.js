@@ -946,6 +946,12 @@ async function searchDuckDuckGo(query) {
     }
   })
 
+  // Zero results plus challenge markers means we were bot-walled, not that
+  // the query has no matches — surface it as a failure, not an empty answer
+  if (results.length === 0 && /anomaly|challenge|not a bot/i.test(stdout)) {
+    throw new Error('Search backend served a bot challenge (rate-limited)')
+  }
+
   return { query: query, number_of_results: results.length, results: results }
 }
 
