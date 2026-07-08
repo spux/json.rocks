@@ -61,29 +61,34 @@ jsonrocks
 
 ```bash
 # Extract metadata from a URL
-curl "http://localhost:9980/?uri=https://github.com/spux/json.rocks"
+curl "http://localhost:9980/api?uri=https://github.com/spux/json.rocks"
 
 # Search the web (returns JSON results)
-curl "http://localhost:9980/?uri=chat+applications"
+curl "http://localhost:9980/api?uri=chat+applications"
 ```
 
 ---
 
 ## 📖 API Reference
 
-### Main Endpoint: `GET /`
+### Main Endpoint: `GET /api`
 
 Extract structured JSON metadata from any URL.
+
+(`GET /` serves the browsable web UI — paste a URL and explore the same data as rendered panes.)
 
 **Parameters:**
 - `uri` (required) - The URL to scrape OR a search query
 - `refresh` (optional) - Set to `true` to bypass cache
+- `filter` (optional) - Reduce the response: `links` (link objects only) or `image` (image links + inline images)
+- `format` (optional) - Set to `m3u` for a plain-text media playlist instead of JSON (see below)
+- `match` (optional) - With `format=m3u`, keep only URLs containing this substring (case-insensitive)
 
 **Example Request:**
 
 ```javascript
 // Fetch link preview data
-const response = await fetch('http://localhost:9980/?uri=https://example.com/article')
+const response = await fetch('http://localhost:9980/api?uri=https://example.com/article')
 const data = await response.json()
 ```
 
@@ -122,6 +127,46 @@ const data = await response.json()
 }
 ```
 
+### Playlist Output: `format=m3u`
+
+Get a page's media (image links, inline images, videos) as an extended M3U
+playlist — one URL per line, ready for any player or downloader:
+
+```bash
+curl "http://localhost:9980/api?uri=https://example.com/gallery&format=m3u"
+```
+
+```
+#EXTM3U
+# Amazing Gallery Title
+# https://example.com/gallery
+https://cdn.example.com/photos/001-large.jpg
+https://cdn.example.com/photos/002-large.jpg
+```
+
+URLs are deduplicated and kept in page order; SVG/ICO icons and `data:` URIs
+are excluded. Use `match` to narrow the selection, e.g. `&match=large` keeps
+only URLs containing "large". Combines with `filter` (which then picks the
+URL set). Content type is `audio/x-mpegurl`.
+
+```bash
+# Feed a page's full-size images straight into mpv
+curl -s "http://localhost:9980/api?uri=https://example.com/gallery&format=m3u&match=large" | mpv --playlist=-
+```
+
+### Error Responses
+
+Errors are JSON with an `error` and a human-readable `message`:
+
+- `400` - Missing or invalid `uri`
+- `403` - Domain not in allowlist, or security validation failed
+- `404` / `408` / `503` - Target could not be resolved / timed out / refused connection
+- `502 Cross-site redirect` - The target redirected to a **different site**;
+  json.rocks refuses to follow, since the result would be another site's
+  content cached under the requested URL. Request the destination site
+  directly instead. Same-site redirects (http→https, `www.`, subdomains)
+  are followed normally.
+
 ### Health Check: `GET /health`
 
 Returns server status.
@@ -152,7 +197,7 @@ curl -X POST http://localhost:9980/admin/reload-domains
 ```javascript
 async function generateLinkPreview(url) {
   const response = await fetch(
-    `http://localhost:9980/?uri=${encodeURIComponent(url)}`
+    `http://localhost:9980/api?uri=${encodeURIComponent(url)}`
   )
   const data = await response.json()
 
@@ -182,7 +227,7 @@ function LinkPreview({ url }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`http://localhost:9980/?uri=${encodeURIComponent(url)}`)
+    fetch(`http://localhost:9980/api?uri=${encodeURIComponent(url)}`)
       .then(res => res.json())
       .then(data => {
         setPreview(data)
@@ -221,7 +266,7 @@ app.get('/api/preview', async (req, res) => {
 
   try {
     const response = await fetch(
-      `http://localhost:9980/?uri=${encodeURIComponent(url)}`
+      `http://localhost:9980/api?uri=${encodeURIComponent(url)}`
     )
     const data = await response.json()
 
@@ -256,7 +301,7 @@ def get_preview():
         return jsonify({'error': 'URL required'}), 400
 
     try:
-        response = requests.get(f'http://localhost:9980/?uri={url}')
+        response = requests.get(f'http://localhost:9980/api?uri={url}')
         data = response.json()
 
         return jsonify({
@@ -349,10 +394,10 @@ Protect your instance and get custom rate limits with API key authentication:
 
 ```bash
 # Using X-API-Key header (recommended)
-curl -H "X-API-Key: jr_live_key_123" "http://localhost:9980/?uri=https://example.com"
+curl -H "X-API-Key: jr_live_key_123" "http://localhost:9980/api?uri=https://example.com"
 
 # Or via query parameter
-curl "http://localhost:9980/?uri=https://example.com&api_key=jr_live_key_123"
+curl "http://localhost:9980/api?uri=https://example.com&api_key=jr_live_key_123"
 ```
 
 Configure API keys in `data/api-keys.json`:
@@ -388,7 +433,7 @@ Two-tier caching strategy:
 
 **Bypass cache:**
 ```bash
-curl "http://localhost:9980/?uri=https://example.com&refresh=true"
+curl "http://localhost:9980/api?uri=https://example.com&refresh=true"
 ```
 
 ---
@@ -413,7 +458,7 @@ curl "http://localhost:9980/?uri=https://example.com&refresh=true"
 ┌─────────────┐
 │  Chat App   │
 └──────┬──────┘
-       │ HTTP GET /?uri=...
+       │ HTTP GET /api?uri=...
        ▼
 ┌─────────────────┐
 │  json.rocks     │
@@ -588,7 +633,7 @@ json.rocks/
 
 ```bash
 # Search the web for JSON content
-curl "http://localhost:9980/?uri=best+javascript+frameworks"
+curl "http://localhost:9980/api?uri=best+javascript+frameworks"
 ```
 
 Returns search results in structured JSON format.
