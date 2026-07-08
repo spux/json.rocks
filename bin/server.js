@@ -3,6 +3,8 @@
 // IMPORTS
 import extractor from 'unfluff'
 import axios from 'axios'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import fs from 'fs-extra'
 import url from 'url'
 import dns from 'dns/promises'
@@ -889,13 +891,62 @@ async function searchText(query, refresh) {
   if (fs.existsSync(mapped) && !refresh) {
     return JSON.parse(await fs.readFile(mapped, 'utf8'))
   }
-  var html = await axios.get(
-    searx + `/?q=${query}&categories=general&language=en-US&format=json`,
-    { headers: headers }
-  )
-  var result = html.data
-  await fs.outputFile(mapped, JSON.stringify(result, null, 2))
+
+  var result
+  try {
+    var html = await axios.get(
+      searx + `/?q=${query}&categories=general&language=en-US&format=json`,
+      { headers: headers, timeout: 5000 }
+    )
+    if (!html.data || !Array.isArray(html.data.results)) {
+      throw new Error('SearXNG instance returned no JSON results')
+    }
+    result = html.data
+  } catch (searxErr) {
+    // Public SearXNG instances routinely rate-limit or wall off their JSON
+    // API — fall back to parsing DuckDuckGo's HTML results
+    result = await searchDuckDuckGo(query)
+  }
+
+  // Only cache non-empty result sets — an empty answer is usually a blocked
+  // or failed upstream, not a true "no results"
+  if (result.results && result.results.length > 0) {
+    await fs.outputFile(mapped, JSON.stringify(result, null, 2))
+  }
   return result
+}
+
+const execFileAsync = promisify(execFile)
+
+async function searchDuckDuckGo(query) {
+  // Fetched via curl rather than axios: the endpoint rejects Node's TLS
+  // fingerprint with a bot challenge regardless of headers, while curl's
+  // handshake passes. execFile with an encoded query — no shell involved.
+  const searchUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query)
+  const { stdout } = await execFileAsync('curl', [
+    '-fsSL', '-m', '10',
+    '-A', user_agent_desktop,
+    searchUrl
+  ], { timeout: 15000, maxBuffer: MAX_CONTENT_SIZE })
+
+  const $ = cheerio.load(stdout)
+  const results = []
+  $('.result').each(function (i, el) {
+    if ($(el).hasClass('result--ad')) return
+    const a = $(el).find('.result__a').first()
+    const title = a.text().trim()
+    let href = a.attr('href') || ''
+    // Result links are redirects like //duckduckgo.com/l/?uddg=<encoded-url>
+    const m = href.match(/[?&]uddg=([^&]+)/)
+    if (m) href = decodeURIComponent(m[1])
+    if (href.startsWith('//')) href = 'https:' + href
+    const content = $(el).find('.result__snippet').text().trim()
+    if (title && href.startsWith('http')) {
+      results.push({ url: href, title: title, content: content, engine: 'duckduckgo' })
+    }
+  })
+
+  return { query: query, number_of_results: results.length, results: results }
 }
 
 // JSON API endpoint — returns scraped data as JSON
@@ -993,7 +1044,10 @@ fastify.get('/api', async (request, reply) => {
         var apiData = await searchText(uri, refresh)
       } catch (err) {
         console.error(err)
-        return reply.code(500).send({ error: 'Search failed' })
+        return reply.code(503).send({
+          error: 'Search unavailable',
+          message: 'Search backends are unreachable or rate-limited — try again shortly'
+        })
       }
       return reply.code(200).header('Content-Type', 'application/json').send(apiData)
     }
