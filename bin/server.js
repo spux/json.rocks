@@ -386,6 +386,7 @@ data.scheme = argv.scheme || data.scheme
 data.filter = argv.filter || data.filter
 data.cacheMaxAge = argv['cache-max-age'] != null ? parseInt(argv['cache-max-age']) : (argv.cacheMaxAge != null ? parseInt(argv.cacheMaxAge) : data.cacheMaxAge)
 var searx = argv.searx || data.searx
+var braveKey = argv['brave-key'] || process.env.BRAVE_API_KEY || null
 var root = './data'
 
 console.log('data', data)
@@ -892,20 +893,30 @@ async function searchText(query, refresh) {
     return JSON.parse(await fs.readFile(mapped, 'utf8'))
   }
 
-  var result
-  try {
-    var html = await axios.get(
-      searx + `/?q=${query}&categories=general&language=en-US&format=json`,
-      { headers: headers, timeout: 5000 }
-    )
-    if (!html.data || !Array.isArray(html.data.results)) {
-      throw new Error('SearXNG instance returned no JSON results')
+  // Backend chain: Brave API (keyed, reliable) -> SearXNG -> DuckDuckGo HTML
+  var result = null
+  if (braveKey) {
+    try {
+      result = await searchBrave(query)
+    } catch (braveErr) {
+      console.warn('Brave search failed:', braveErr.message)
     }
-    result = html.data
-  } catch (searxErr) {
-    // Public SearXNG instances routinely rate-limit or wall off their JSON
-    // API — fall back to parsing DuckDuckGo's HTML results
-    result = await searchDuckDuckGo(query)
+  }
+  if (!result) {
+    try {
+      var html = await axios.get(
+        searx + `/?q=${query}&categories=general&language=en-US&format=json`,
+        { headers: headers, timeout: 5000 }
+      )
+      if (!html.data || !Array.isArray(html.data.results)) {
+        throw new Error('SearXNG instance returned no JSON results')
+      }
+      result = html.data
+    } catch (searxErr) {
+      // Public SearXNG instances routinely rate-limit or wall off their JSON
+      // API — fall back to parsing DuckDuckGo's HTML results
+      result = await searchDuckDuckGo(query)
+    }
   }
 
   // Only cache non-empty result sets — an empty answer is usually a blocked
@@ -917,6 +928,26 @@ async function searchText(query, refresh) {
 }
 
 const execFileAsync = promisify(execFile)
+
+async function searchBrave(query) {
+  const resp = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+    params: { q: query, count: 20 },
+    headers: {
+      'Accept': 'application/json',
+      'X-Subscription-Token': braveKey
+    },
+    timeout: 8000
+  })
+  const items = resp.data?.web?.results || []
+  const results = items.map(r => ({
+    url: r.url,
+    title: r.title || '',
+    content: r.description || '',
+    engine: 'brave'
+  })).filter(r => r.url)
+  if (results.length === 0) throw new Error('Brave returned no results')
+  return { query: query, number_of_results: results.length, results: results }
+}
 
 async function searchDuckDuckGo(query) {
   // Fetched via curl rather than axios: the endpoint rejects Node's TLS

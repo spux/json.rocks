@@ -638,6 +638,20 @@ curl "http://localhost:9980/api?uri=best+javascript+frameworks"
 
 Returns search results in structured JSON format.
 
+Search tries backends in order: **Brave Search API** (if a key is
+configured), then the configured **SearXNG** instance (`--searx <url>`),
+then **DuckDuckGo** HTML results. The keyless backends are rate-limited
+and best-effort; for reliable search, get a free API key from
+[Brave Search API](https://api-dashboard.search.brave.com/) (2,000
+queries/month) and provide it via:
+
+```bash
+BRAVE_API_KEY=<key> ./bin/server.js        # environment variable
+./bin/server.js --brave-key <key>          # or CLI flag
+```
+
+If all backends fail, the API returns `503 Search unavailable`.
+
 ---
 
 ## 📊 Response Examples
